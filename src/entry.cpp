@@ -1,4 +1,6 @@
 #include "compact_defines.h"
+#include "serial.hpp"
+#include "display.hpp"
 
 /**
  * @brief Entry point for Heterogeneous Distributed Barnes-Hut
@@ -10,8 +12,10 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    display_init();
+
     if (strcmp(argv[1], "serial") == 0) {
-        fprintf(stderr, "Serial implementation\n");
+        serial_main();
         return 0;
     } else if (strcmp(argv[1], "ghc") == 0) {
         fprintf(stderr, "Running on GHC\n");
