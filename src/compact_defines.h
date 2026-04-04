@@ -13,6 +13,11 @@
 #include <stdio.h>
 #include <cstring>
 #include <cstdlib>
+#include <chrono>
+
+/** @brief Nice for timekeeping */
+using chrono = std::chrono::high_resolution_clock;
+using millis = std::chrono::duration<double, std::milli>;
 
 /** @brief Inline min/max macros */
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))

@@ -16,28 +16,21 @@
 static SDL_Window* sdlwindow = nullptr;
 static SDL_Renderer* sdlrenderer = nullptr;
 
-static int frame_ctr = RENDER_PERIOD;
+static int frame_ctr = -1;
 
 /**
- * @brief Handle keyboard input
- * 
- * @param event SDL2 event
+ * @brief Poll for quit key
+ * @return If quit command sent
  */
-static void handle_key(const SDL_Event& event) {
-    if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_q) {
-        fprintf(stderr, "Quit");
-        exit(0);
-    }
-}
-
-/**
- * @brief Poll for keys without rendering
- */
-void display_check_key(void) {
+bool check_quit(void) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        handle_key(event);
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_q) {
+            fprintf(stderr, "Quit");
+            return true;
+        }
     }
+    return false;
 }
 
 /**
@@ -47,11 +40,12 @@ void display_render(std::vector<Star> &stars) {
 
 #ifdef RENDER_ENABLED
 
-    if (frame_ctr < RENDER_PERIOD) {
-        frame_ctr++;
+    frame_ctr++;
+    if (frame_ctr % RENDER_PERIOD != 0) {
+        fprintf(stdout, "Render iteration %d, skipping\n", frame_ctr);
         return;
     }
-    frame_ctr = 0;
+    fprintf(stdout, "Render iteration %d, rendering\n", frame_ctr);
 
     // Clear screen
     SDL_SetRenderDrawColor(sdlrenderer, 25, 50, 75, 255); // dark bluish background
@@ -90,4 +84,13 @@ void display_init(void) {
         WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 
     sdlrenderer = SDL_CreateRenderer(sdlwindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+}
+
+/**
+ * @brief Cleanup display
+ */
+void display_cleanup(void) {
+    if (sdlrenderer) SDL_DestroyRenderer(sdlrenderer);
+    if (sdlwindow) SDL_DestroyWindow(sdlwindow);
+    SDL_Quit();
 }

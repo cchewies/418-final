@@ -35,7 +35,7 @@ std::vector<Star> generate_galaxy(void) {
     black_hole.mass = 1000.0f;
     stars.push_back(black_hole);
 
-    for (int i = 0; i < NUM_STARS; i++) {
+    for (int i = 0; i < NUM_STARS - 1; i++) {
         Star s;
 
         // Random radius with denser core

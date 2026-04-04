@@ -14,7 +14,6 @@
 #include "simulation_config.hpp"
 #include "quadtree.hpp"
 #include <math.h>
-#include <chrono>
 
 /**
  * @brief Naive N^2 serial implementation
@@ -25,7 +24,8 @@ static void naive_iterate_simulation(std::vector<Star> &stars) {
 
     // calculate pairwise forces
     for (size_t i = 0; i < stars.size(); i++) {
-        float fx = 0, fy = 0;
+        float fx = 0;
+        float fy = 0;
         for (size_t j = 0; j < stars.size(); j++) {
             if (i == j) continue;
             float dx = stars[j].x - stars[i].x;
@@ -55,23 +55,25 @@ void naive_main(int argc, char* argv[]) {
     (void)argv;
 
     fprintf(stderr, "Hello naive\n");
+    display_init();
 
     std::vector<Star> stars = generate_galaxy();
 
     while (1) {
         display_render(stars);
 
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = chrono::now();
 
         naive_iterate_simulation(stars);
         
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> frame_time = end - start;
+        auto end = chrono::now();
+        millis frame_time = end - start;
 
-        fprintf(stdout, "Iteration took %.00fms, stars: %ld\n", 
+        fprintf(stdout, "Iteration took %.01fms, stars: %ld\n", 
             frame_time.count(), stars.size());
-        display_check_key();
+        if (check_quit()) break;
     }
+    display_cleanup();
 }
 
 /**
@@ -83,7 +85,7 @@ void naive_main(int argc, char* argv[]) {
  * @param fy Reference to y force accumulator
  * @return # of stars visited
  */
-int compute_force(Star& s, QNode* node, float& fx, float& fy) {
+static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
 
     int star_count = 0;
 
@@ -122,14 +124,18 @@ int compute_force(Star& s, QNode* node, float& fx, float& fy) {
  */
 static int serial_iterate_simulation(std::vector<Star> &stars) {
 
+    auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
+    auto qtree_end = chrono::now();
+    millis qtree_time = qtree_end - qtree_start;
 
     int total_ct = 0;
 
     // update velocities
+    auto force_start = chrono::now();
     for (auto& s : stars) {
-        float fx = 0.0f;
-        float fy = 0.0f;
+        float fx = 0.0;
+        float fy = 0.0;
 
         int star_ct = compute_force(s, root, fx, fy);
         total_ct += star_ct;
@@ -137,12 +143,17 @@ static int serial_iterate_simulation(std::vector<Star> &stars) {
         s.vx += fx / s.mass * DT;
         s.vy += fy / s.mass * DT;
     }
+    auto force_end = chrono::now();
+    millis force_time = force_end - force_start;
 
     // update positions
     for (auto& s : stars) {
         s.x += s.vx * DT;
         s.y += s.vy * DT;
     }
+
+    fprintf(stdout, "Qtree took %.01fms, force took %.01fms\n", 
+        qtree_time.count(), force_time.count());
 
     destroy_tree(root);
     return (int)(total_ct / stars.size());
@@ -157,19 +168,22 @@ void serial_main(int argc, char* argv[]) {
 
     fprintf(stderr, "Hello serial\n");
 
+    display_init();
+
     std::vector<Star> stars = generate_galaxy();
 
     while (1) {
         display_render(stars);
-        auto start = std::chrono::high_resolution_clock::now();
+        auto start = chrono::now();
 
         int avg_stars = serial_iterate_simulation(stars);
         
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> frame_time = end - start;
+        auto end = chrono::now();
+        millis frame_time = end - start;
 
-        fprintf(stdout, "Iteration took %.00fms, avg stars: %d/%ld\n", 
+        fprintf(stdout, "Iteration took %.01fms, avg stars: %d/%ld\n", 
             frame_time.count(), avg_stars, stars.size());
-        display_check_key();
+        if (check_quit()) break;
     }
+    display_cleanup();
 }

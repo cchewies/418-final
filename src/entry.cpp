@@ -25,8 +25,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    display_init();
-
     if (strcmp(argv[1], "naive") == 0) {
         naive_main(argc, argv);
         return 0;

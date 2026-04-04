@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cmath>
 
+static int num_alloc = 0;
+
 /**
  * @brief Create a quadtree node 
  * 
@@ -22,6 +24,7 @@
  */
 static QNode* create_node(float cx, float cy, float side_len) {
     QNode* node = new QNode{};
+    num_alloc++;
     node->cx = cx;
     node->cy = cy;
     node->side_len = side_len;
@@ -101,6 +104,7 @@ static void insert_star(QNode* node, Star* s) {
  */
 QNode* build_qtree(std::vector<Star>& stars) {
     assert(!stars.empty());
+    assert(num_alloc == 0);
 
     // compute bounding box
     float min_x = stars[0].x, max_x = stars[0].x;
@@ -144,4 +148,5 @@ void destroy_tree(QNode* node) {
     destroy_tree(node->se);
 
     delete node;
+    num_alloc--;
 }

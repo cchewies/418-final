@@ -7,8 +7,8 @@
 
 #pragma once
 
-// star count (+1 for black hole)
-constexpr int NUM_STARS = 100;
+// star count
+constexpr int NUM_STARS = 1000;
 
 // Simulation time interval
 constexpr float DT = 0.001;
