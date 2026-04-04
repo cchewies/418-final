@@ -1,3 +1,10 @@
+/**
+ * @file stars.hpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Header file for star generation + star defines
+ */
+
 #pragma once
 #include "compact_defines.h"
 #include <vector>

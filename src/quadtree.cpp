@@ -1,3 +1,10 @@
+/**
+ * @file quadtree.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Quadtree implementation for stars
+ */
+
 #include "quadtree.hpp"
 
 #include <cassert>

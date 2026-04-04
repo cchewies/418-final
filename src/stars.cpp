@@ -1,3 +1,10 @@
+/**
+ * @file stars.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Various initial starting configurations
+ */
+
 #include "stars.hpp"
 #include "display.hpp"
 #include "simulation_config.hpp"

@@ -1,3 +1,13 @@
+/**
+ * @file serial.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Single-threaded Barnes-Hut implementations
+ * 
+ * naive: O(N^2), single-thread, single-node
+ * serial: O(NlogN), single-thread, single-node
+ */
+
 #include "compact_defines.h"
 #include "display.hpp"
 #include "serial.hpp"
@@ -40,7 +50,9 @@ static void naive_iterate_simulation(std::vector<Star> &stars) {
 /**
  * @brief Entry point for naive implementation
  */
-void naive_main(void) {
+void naive_main(int argc, char* argv[]) {
+    (void)argc;
+    (void)argv;
 
     fprintf(stderr, "Hello naive\n");
 
@@ -48,18 +60,17 @@ void naive_main(void) {
 
     while (1) {
         display_render(stars);
-        for (int i = 0; i < RENDER_PERIOD; i++) {
-            auto start = std::chrono::high_resolution_clock::now();
-    
-            naive_iterate_simulation(stars);
-            
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> frame_time = end - start;
 
-            fprintf(stdout, "Iteration %d took %.00fms, stars: %ld\n", 
-                i, frame_time.count(), stars.size());
-            display_check_key();
-        }
+        auto start = std::chrono::high_resolution_clock::now();
+
+        naive_iterate_simulation(stars);
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> frame_time = end - start;
+
+        fprintf(stdout, "Iteration took %.00fms, stars: %ld\n", 
+            frame_time.count(), stars.size());
+        display_check_key();
     }
 }
 
@@ -140,7 +151,9 @@ static int serial_iterate_simulation(std::vector<Star> &stars) {
 /**
  * @brief Entry point for serial quadtree implementation
  */
-void serial_main(void) {
+void serial_main(int argc, char* argv[]) {
+    (void)argc;
+    (void)argv;
 
     fprintf(stderr, "Hello serial\n");
 
@@ -148,17 +161,15 @@ void serial_main(void) {
 
     while (1) {
         display_render(stars);
-        for (int i = 0; i < RENDER_PERIOD; i++) {
-            auto start = std::chrono::high_resolution_clock::now();
-    
-            int avg_stars = serial_iterate_simulation(stars);
-            
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> frame_time = end - start;
+        auto start = std::chrono::high_resolution_clock::now();
 
-            fprintf(stdout, "Iteration %d took %.00fms, avg stars: %d/%ld\n", 
-                i, frame_time.count(), avg_stars, stars.size());
-            display_check_key();
-        }
+        int avg_stars = serial_iterate_simulation(stars);
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> frame_time = end - start;
+
+        fprintf(stdout, "Iteration took %.00fms, avg stars: %d/%ld\n", 
+            frame_time.count(), avg_stars, stars.size());
+        display_check_key();
     }
 }

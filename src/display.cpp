@@ -1,3 +1,12 @@
+/**
+ * @file display.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Display functions for rendering output
+ * Uses SDL2 and is kinda slow over AFS, probably good to not
+ * render every single frame
+ */
+
 #include "display.hpp"
 #include <SDL2/SDL.h>
 #include <iostream>
@@ -6,6 +15,8 @@
 // SDL objects
 static SDL_Window* sdlwindow = nullptr;
 static SDL_Renderer* sdlrenderer = nullptr;
+
+static int frame_ctr = RENDER_PERIOD;
 
 /**
  * @brief Handle keyboard input
@@ -34,6 +45,14 @@ void display_check_key(void) {
  */
 void display_render(std::vector<Star> &stars) {
 
+#ifdef RENDER_ENABLED
+
+    if (frame_ctr < RENDER_PERIOD) {
+        frame_ctr++;
+        return;
+    }
+    frame_ctr = 0;
+
     // Clear screen
     SDL_SetRenderDrawColor(sdlrenderer, 25, 50, 75, 255); // dark bluish background
     SDL_RenderClear(sdlrenderer);
@@ -55,6 +74,9 @@ void display_render(std::vector<Star> &stars) {
     }
 
     SDL_RenderPresent(sdlrenderer);
+
+#endif /* RENDER_ENABLED */
+
 }
 
 /**

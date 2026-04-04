@@ -1,3 +1,10 @@
+/**
+ * @file quadtree.hpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Header file for quadtree implementation
+ */
+
 #pragma once
 
 #include "compact_defines.h"
