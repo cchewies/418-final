@@ -1,6 +1,7 @@
 #include "display.hpp"
 #include <SDL2/SDL.h>
 #include <iostream>
+#include <cmath>
 
 // SDL objects
 static SDL_Window* sdlwindow = nullptr;
@@ -19,31 +20,29 @@ static void handle_key(const SDL_Event& event) {
 }
 
 /**
- * @brief Render a frame
- * 
+ * @brief Poll for keys without rendering
  */
-#include <cmath> // for log
-
-void display_render(std::vector<Star> &stars) {
-
-    // Handle key events
+void display_check_key(void) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         handle_key(event);
     }
+}
+
+/**
+ * @brief Render a frame
+ */
+void display_render(std::vector<Star> &stars) {
 
     // Clear screen
     SDL_SetRenderDrawColor(sdlrenderer, 25, 50, 75, 255); // dark bluish background
     SDL_RenderClear(sdlrenderer);
 
-    // Draw stars with size proportional to log(mass)
     SDL_SetRenderDrawColor(sdlrenderer, 255, 255, 255, 255); // white color
 
     for (auto& s : stars) {
-        // Ensure mass is positive to avoid log(0)
+        // Draw stars with size proportional to log(mass)
         float mass = std::max(0.1f, s.mass);
-
-        // Size based on log of mass, scaled
         int size = std::max(1, static_cast<int>(std::log(mass + 1.0f) * 3.0f)); 
 
         SDL_Rect rect;

@@ -14,8 +14,6 @@ std::vector<Star> generate_galaxy(void) {
     std::vector<Star> stars;
     std::srand(static_cast<unsigned>(std::time(nullptr)));
 
-    // star count
-    const int num_stars = 1000;
     // gravitational constant
     const float center_x = WINDOW_WIDTH / 2.0f;
     const float center_y = WINDOW_HEIGHT / 2.0f;
@@ -30,7 +28,7 @@ std::vector<Star> generate_galaxy(void) {
     black_hole.mass = 1000.0f;
     stars.push_back(black_hole);
 
-    for (int i = 0; i < num_stars; i++) {
+    for (int i = 0; i < NUM_STARS; i++) {
         Star s;
 
         // Random radius with denser core

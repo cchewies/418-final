@@ -14,7 +14,10 @@ int main(int argc, char* argv[]) {
 
     display_init();
 
-    if (strcmp(argv[1], "serial") == 0) {
+    if (strcmp(argv[1], "naive") == 0) {
+        naive_main();
+        return 0;
+    } else if (strcmp(argv[1], "serial") == 0) {
         serial_main();
         return 0;
     } else if (strcmp(argv[1], "ghc") == 0) {
