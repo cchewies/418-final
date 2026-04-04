@@ -1,16 +1,10 @@
-#include "compact_defines.h"
+#include "display.hpp"
 #include <SDL2/SDL.h>
 #include <iostream>
 
-// Window size
-int gWidth = 800;
-int gHeight = 600;
-
 // SDL objects
-SDL_Window* gWindow = nullptr;
-SDL_Renderer* gRenderer = nullptr;
-SDL_Texture* gTexture = nullptr;
-uint32_t* gBuffer = nullptr;
+static SDL_Window* sdlwindow = nullptr;
+static SDL_Renderer* sdlrenderer = nullptr;
 
 /**
  * @brief Handle keyboard input
@@ -18,7 +12,7 @@ uint32_t* gBuffer = nullptr;
  * @param event SDL2 event
  */
 static void handle_key(const SDL_Event& event) {
-    if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
+    if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_q) {
         fprintf(stderr, "Quit");
         exit(0);
     }
@@ -28,7 +22,9 @@ static void handle_key(const SDL_Event& event) {
  * @brief Render a frame
  * 
  */
-void display_render() {
+#include <cmath> // for log
+
+void display_render(std::vector<Star> &stars) {
 
     // Handle key events
     SDL_Event event;
@@ -36,18 +32,30 @@ void display_render() {
         handle_key(event);
     }
 
-    // TEMP: Fill the buffer with a gradient
-    for (int y = 0; y < gHeight; ++y) {
-        for (int x = 0; x < gWidth; ++x) {
-            gBuffer[y * gWidth + x] = (255 << 24) | (x * 255 / gWidth << 16) | (y * 255 / gHeight << 8);
-        }
+    // Clear screen
+    SDL_SetRenderDrawColor(sdlrenderer, 25, 50, 75, 255); // dark bluish background
+    SDL_RenderClear(sdlrenderer);
+
+    // Draw stars with size proportional to log(mass)
+    SDL_SetRenderDrawColor(sdlrenderer, 255, 255, 255, 255); // white color
+
+    for (auto& s : stars) {
+        // Ensure mass is positive to avoid log(0)
+        float mass = std::max(0.1f, s.mass);
+
+        // Size based on log of mass, scaled
+        int size = std::max(1, static_cast<int>(std::log(mass + 1.0f) * 3.0f)); 
+
+        SDL_Rect rect;
+        rect.x = static_cast<int>(s.x) - size / 2;
+        rect.y = static_cast<int>(s.y) - size / 2;
+        rect.w = size;
+        rect.h = size;
+
+        SDL_RenderFillRect(sdlrenderer, &rect);
     }
 
-    // Render stuff
-    SDL_UpdateTexture(gTexture, nullptr, gBuffer, gWidth * sizeof(uint32_t));
-    SDL_RenderClear(gRenderer);
-    SDL_RenderCopy(gRenderer, gTexture, nullptr, nullptr);
-    SDL_RenderPresent(gRenderer);
+    SDL_RenderPresent(sdlrenderer);
 }
 
 /**
@@ -56,16 +64,9 @@ void display_render() {
 void display_init(void) {
     SDL_Init(SDL_INIT_VIDEO);
 
-    gWindow = SDL_CreateWindow("barnes hut",
+    sdlwindow = SDL_CreateWindow("barnes hut",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        gWidth, gHeight, 0);
+        WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 
-    gRenderer = SDL_CreateRenderer(gWindow, -1, SDL_RENDERER_ACCELERATED);
-
-    gTexture = SDL_CreateTexture(gRenderer,
-        SDL_PIXELFORMAT_RGBA8888,
-        SDL_TEXTUREACCESS_STREAMING,
-        gWidth, gHeight);
-
-    gBuffer = new uint32_t[gWidth * gHeight];
+    sdlrenderer = SDL_CreateRenderer(sdlwindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 }
