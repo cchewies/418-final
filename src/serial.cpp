@@ -134,8 +134,8 @@ static int serial_iterate_simulation(std::vector<Star> &stars) {
     // update velocities
     auto force_start = chrono::now();
     for (auto& s : stars) {
-        float fx = 0.0;
-        float fy = 0.0;
+        float fx = 0;
+        float fy = 0;
 
         int star_ct = compute_force(s, root, fx, fy);
         total_ct += star_ct;

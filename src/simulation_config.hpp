@@ -17,7 +17,7 @@ constexpr float DT = 0.001;
 constexpr float G = 10;
 
 // Barnes-Hut threshold
-constexpr float THETA = 0.5f;
+constexpr float THETA = 0.5;
 
 // softening
 constexpr float EPS2 = 1;

@@ -55,8 +55,8 @@ void display_render(std::vector<Star> &stars) {
 
     for (auto& s : stars) {
         // Draw stars with size proportional to log(mass)
-        float mass = std::max(0.1f, s.mass);
-        int size = std::max(1, static_cast<int>(std::log(mass + 1.0f) * 3.0f)); 
+        float mass = std::max(0, s.mass);
+        int size = std::max(1, (int)(std::log(mass + 1) * 3)); 
 
         SDL_Rect rect;
         rect.x = static_cast<int>(s.x) - size / 2;
