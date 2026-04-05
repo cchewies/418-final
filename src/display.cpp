@@ -12,17 +12,21 @@
 #include <iostream>
 #include <cmath>
 
+#ifdef RENDER_ENABLED
 // SDL objects
 static SDL_Window* sdlwindow = nullptr;
 static SDL_Renderer* sdlrenderer = nullptr;
 
 static int frame_ctr = -1;
+#endif /* RENDER_ENABLED */
 
 /**
  * @brief Poll for quit key
  * @return If quit command sent
  */
 bool check_quit(void) {
+
+#ifdef RENDER_ENABLED
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_q) {
@@ -30,6 +34,7 @@ bool check_quit(void) {
             return true;
         }
     }
+#endif /* RENDER_ENABLED */
     return false;
 }
 
@@ -77,6 +82,8 @@ void display_render(std::vector<Star> &stars) {
  * @brief Initialize display
  */
 void display_init(void) {
+
+#ifdef RENDER_ENABLED
     SDL_Init(SDL_INIT_VIDEO);
 
     sdlwindow = SDL_CreateWindow("barnes hut",
@@ -84,13 +91,19 @@ void display_init(void) {
         WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 
     sdlrenderer = SDL_CreateRenderer(sdlwindow, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
+#endif /* RENDER_ENABLED */
 }
 
 /**
  * @brief Cleanup display
  */
 void display_cleanup(void) {
+
+#ifdef RENDER_ENABLED
     if (sdlrenderer) SDL_DestroyRenderer(sdlrenderer);
     if (sdlwindow) SDL_DestroyWindow(sdlwindow);
     SDL_Quit();
+
+#endif /* RENDER_ENABLED */
 }
