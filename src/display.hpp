@@ -18,7 +18,7 @@ constexpr int WINDOW_WIDTH = 1280;
 constexpr int WINDOW_HEIGHT = 720;
 
 // rendering period (because X11 forwarding is slow)
-constexpr int RENDER_PERIOD = 10000;
+constexpr int RENDER_PERIOD = 100;
 
 void display_init(void);
 bool check_quit(void);

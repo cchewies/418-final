@@ -13,11 +13,9 @@
 #include <math.h>
 
 /**
- * @brief Generate a random galaxy
- * 
- * @return Vector of stars
+ * @brief Random blob galaxy
  */
-std::vector<Star> generate_galaxy(void) {
+static std::vector<Star> random_blob(void) {
     std::vector<Star> stars;
     std::srand(static_cast<unsigned>(std::time(nullptr)));
 
@@ -39,7 +37,7 @@ std::vector<Star> generate_galaxy(void) {
         Star s;
 
         // Random radius with denser core
-        float r = galaxy_radius * sqrt((float)std::rand() / RAND_MAX);
+        float r = galaxy_radius * (float)std::rand() / RAND_MAX;
         float angle = 2.0f * M_PI * ((float)std::rand() / RAND_MAX);
 
         // Polar to Cartesian
@@ -53,7 +51,7 @@ std::vector<Star> generate_galaxy(void) {
         float dx = s.x - center_x;
         float dy = s.y - center_y;
         float dist = sqrt(dx*dx + dy*dy);
-        float v_circ = sqrt(G * black_hole.mass / (dist + 1.0f));
+        float v_circ = (1+3*(r*r/galaxy_radius/galaxy_radius)) * sqrt(G * black_hole.mass / (dist + 1.0f));
         s.vx = -dy / dist * v_circ;
         s.vy = dx / dist * v_circ;
         s.vx += ((std::rand() % 20) - 10) / 200.0f;
@@ -62,4 +60,13 @@ std::vector<Star> generate_galaxy(void) {
         stars.push_back(s);
     }
     return stars;
+}
+
+/**
+ * @brief Generate a random galaxy
+ * 
+ * @return Vector of stars
+ */
+std::vector<Star> generate_galaxy(void) {
+    return random_blob();
 }
