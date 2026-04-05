@@ -8,11 +8,12 @@
  */
 
 #include "display.hpp"
+
+#ifdef RENDER_ENABLED
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <cmath>
 
-#ifdef RENDER_ENABLED
 // SDL objects
 static SDL_Window* sdlwindow = nullptr;
 static SDL_Renderer* sdlrenderer = nullptr;
