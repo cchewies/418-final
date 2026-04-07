@@ -131,7 +131,9 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 /**
  * @brief Entry point for single-node MPI implementation
  */
-void mpi_main(int argc, char* argv[]) {
+void mpi_single_main(int argc, char* argv[]) {
+
+    fprintf(stderr, "Hello MPI single\n");
 
     // Initialize MPI
     MPI_Init(&argc, &argv);

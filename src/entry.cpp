@@ -13,6 +13,7 @@
 #include "compact_defines.h"
 #include "serial.hpp"
 #include "mpi_single.hpp"
+#include "mpi_distributed.hpp"
 #include "display.hpp"
 
 /**
@@ -20,8 +21,8 @@
  */
 int main(int argc, char* argv[]) {
 
-    if (argc != 2) {
-        fprintf(stderr, "Need argument\n");
+    if (argc < 2) {
+        fprintf(stderr, "Need at least 1 argument for hdbh\n");
         return -1;
     }
 
@@ -32,12 +33,11 @@ int main(int argc, char* argv[]) {
         serial_main(argc, argv);
         return 0;
     } else if (strcmp(argv[1], "mpi") == 0) {
-        mpi_main(argc, argv);
+        mpi_single_main(argc, argv);
         return 0;
     } else if (strcmp(argv[1], "distributed") == 0) {
-        fprintf(stderr, "distributed implementation\n");
-        fprintf(stderr, "not implemented\n");
-        return -1;
+        mpi_distributed_main(argc, argv);
+        return 0;
     }
 
     fprintf(stderr, "Need argument\n");

@@ -7,4 +7,4 @@
 
 #pragma once
 
-void mpi_main(int argc, char* argv[]);
+void mpi_single_main(int argc, char* argv[]);

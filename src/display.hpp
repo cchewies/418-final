@@ -11,7 +11,7 @@
 #include "simulation_config.hpp"
 #include "stars.hpp"
 
-// #define RENDER_ENABLED
+#define RENDER_ENABLED
 
 // Window size
 constexpr int WINDOW_WIDTH = 1280;
