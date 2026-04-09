@@ -8,7 +8,7 @@
 #pragma once
 
 // star count
-constexpr int NUM_STARS = 5000;
+constexpr int NUM_STARS = 50000;
 
 // Simulation time interval
 constexpr float DT = 0.001;

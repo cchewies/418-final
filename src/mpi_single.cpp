@@ -167,6 +167,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // allgatherv support structures
+    auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
     for (int vpid = 0; vpid < nprocs; vpid++) {
         int node_start = NUM_STARS * vpid / nprocs;
@@ -185,10 +186,12 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         stars.data(), counts.data(), displs.data(), MPI_BYTE,
         MPI_COMM_WORLD
     );
+    auto comm_end = chrono::now();
+    millis comm_time = comm_end - comm_start;
 
     if (pid == 0) {
-        fprintf(stdout, "Qtree took %.01fms, force took %.01fms\n", 
-                qtree_time.count(), force_time.count());
+        fprintf(stdout, "Qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
+                qtree_time.count(), force_time.count(), comm_time.count());
     }
 
     destroy_tree(root);
