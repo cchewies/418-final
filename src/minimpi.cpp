@@ -8,7 +8,7 @@
 #include <cassert>
 
 #define PORT 5000
-#define MAX_NODES 4
+#define MAX_NODES 16
 #define COORDINATOR_HOSTNAME ("ghc82.ghc.andrew.cmu.edu")
 
 static char hostname_buf[MAX_NODES][HOST_NAME_MAX];
@@ -132,10 +132,7 @@ static void mmpi_init_worker(void) {
 
     // Workers can now open pairwise connections
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (listen_fd < 0) { 
-        perror("socket"); 
-        exit(1);
-    }
+    if (listen_fd < 0) { perror("socket"); exit(1); }
 
     // Open a listening connection to all pids higher
     for (int serve = pid+1; serve < num_nodes; serve++) {
@@ -147,9 +144,11 @@ static void mmpi_init_worker(void) {
         addr.sin_port = htons(PORT + pid);
         bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
         listen(listen_fd, 1);
+        if (listen_fd < 1) { perror("listen"); exit(1); }
 
         // store connection to worker
         int conn_fd = accept(listen_fd, NULL, NULL);
+        if (conn_fd < 1) { perror("accept"); exit(1); }
         socks[serve] = conn_fd;
     }
     
@@ -160,6 +159,7 @@ static void mmpi_init_worker(void) {
     for (int ping = pid-1; ping >= 1; ping--) {
         printf("%d pinging %d: %s\n", pid, ping, hostname_buf[ping]);
         int sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 1) { perror("sock"); exit(1); }
 
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
@@ -171,8 +171,10 @@ static void mmpi_init_worker(void) {
 
         // retry until connected
         while (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+            perror("connect");
             usleep(100000);
         }
+        printf("Ping success\n");
 
         socks[ping] = sock;
     }

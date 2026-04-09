@@ -5,7 +5,7 @@
 #include "display.hpp"
 #include "quadtree.hpp"
 #include <cmath>
-
+#include <algorithm>
 
 // expand 32-bit int into 64-bit w interleaved zeros
 static inline uint64_t expand_bits(uint32_t x) {

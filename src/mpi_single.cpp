@@ -14,10 +14,12 @@
 #include "vector_mpi.hpp"
 #include "display.hpp"
 #include "quadtree.hpp"
-#include <mpi.h>
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+
+#ifdef USE_MPI
+#include <mpi.h>
 
 // MPI params
 static int pid, nprocs;
@@ -198,6 +200,8 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     return total_ct / (my_end - my_start);
 }
 
+#endif /* USE_MPI */
+
 /**
  * @brief Entry point for single-node MPI implementation
  */
@@ -205,6 +209,7 @@ void mpi_single_main(int argc, char* argv[]) {
 
     fprintf(stderr, "Hello MPI single\n");
 
+#ifdef USE_MPI
     // Initialize MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
@@ -248,4 +253,11 @@ void mpi_single_main(int argc, char* argv[]) {
     }
     if (pid == 0) display_cleanup();
     MPI_Finalize();
+
+#else
+
+    fprintf(stderr, "MPI not enabled!\n");
+    exit(-1);
+
+#endif /* USE_MPI */
 }
