@@ -1,6 +1,7 @@
 /**
  * @file mpi_single.cpp
  * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * @author Vanessa Lam (yatheil@andrew.cmu.edu)
  * 
  * Single-node MPI Barnes-Hut
  * 
@@ -15,9 +16,35 @@
 #include "quadtree.hpp"
 #include <mpi.h>
 #include <cmath>
+#include <cstdint>
+#include <algorithm>
 
 // MPI params
 static int pid, nprocs;
+
+// expand 32-bit int into 64-bit w interleaved zeros
+static inline uint64_t expand_bits(uint32_t x) {
+    uint64_t v = x;
+    v = (v | (v << 16)) & 0x0000FFFF0000FFFFULL;
+    v = (v | (v << 8))  & 0x00FF00FF00FF00FFULL;
+    v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0FULL;
+    v = (v | (v << 2))  & 0x3333333333333333ULL;
+    v = (v | (v << 1))  & 0x5555555555555555ULL;
+    return v;
+}
+
+// 2D Morton encoding
+static inline uint64_t morton2D(float x, float y,
+                                float min_x, float min_y,
+                                float max_x, float max_y) {
+    float nx = (x - min_x) / (max_x - min_x); // normalize to [0, 1]
+    float ny = (y - min_y) / (max_y - min_y);
+    nx = std::min(1.0f, std::max(0.0f, nx));
+    ny = std::min(1.0f, std::max(0.0f, ny));
+    uint32_t ix = (uint32_t)(nx * ((1 << 21) - 1));
+    uint32_t iy = (uint32_t)(ny * ((1 << 21) - 1));
+    return (expand_bits(ix) << 1) | expand_bits(iy);
+}
 
 /**
  * @brief Barnes-hut force calculation
@@ -67,16 +94,56 @@ static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
  */
 static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
+    // naive allocation
+    // int my_start = NUM_STARS * (pid) / nprocs;
+    // int my_end = NUM_STARS * (pid+1) / nprocs;
+
+    // start of spatial partitioning w Morton ordering 
+
+    // compute bounding box
+    float min_x = stars[0].x, max_x = stars[0].x;
+    float min_y = stars[0].y, max_y = stars[0].y;
+
+    for (const auto& s : stars) {
+        min_x = std::min(min_x, s.x);
+        max_x = std::max(max_x, s.x);
+        min_y = std::min(min_y, s.y);
+        max_y = std::max(max_y, s.y);
+    }
+
+    // compute keys
+    std::vector<std::pair<uint64_t, Star>> keyed;
+    keyed.reserve(stars.size());
+
+    for (const auto& s : stars) {
+        uint64_t key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
+        keyed.emplace_back(key, s);
+    }
+
+    // sort by Morton key
+    std::sort(keyed.begin(), keyed.end(),
+        [](const auto& a, const auto& b) {
+            return a.first < b.first;
+        }
+    );
+
+    // write back sorted stars
+    for (size_t i = 0; i < stars.size(); i++) {
+        stars[i] = keyed[i].second;
+    }
+
+    // compute spatial partition
+    int my_start = stars.size() * pid / nprocs;
+    int my_end   = stars.size() * (pid + 1) / nprocs;
+
+    // end of stars assignment 
+
     auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
     auto qtree_end = chrono::now();
     millis qtree_time = qtree_end - qtree_start;
 
     int total_ct = 0;
-
-    // get node's allocation
-    int my_start = NUM_STARS * (pid) / nprocs;
-    int my_end = NUM_STARS * (pid+1) / nprocs;
 
     // update velocities
     auto force_start = chrono::now();
