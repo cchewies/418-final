@@ -13,6 +13,8 @@ struct Star {
     float x, y;     // position
     float vx, vy;   // velocity
     float mass;     // mass
+
+    int cost;       // for load balancing
 };
 
 std::vector<Star> generate_galaxy(void);

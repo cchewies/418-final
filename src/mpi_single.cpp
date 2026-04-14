@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <cassert>
 
 #ifdef USE_MPI
 #include <mpi.h>
@@ -100,7 +101,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     // int my_start = NUM_STARS * (pid) / nprocs;
     // int my_end = NUM_STARS * (pid+1) / nprocs;
 
-    // start of spatial partitioning w Morton ordering 
+    // -- start of spatial partitioning w Morton ordering --
 
     // compute bounding box
     float min_x = stars[0].x, max_x = stars[0].x;
@@ -134,11 +135,38 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         stars[i] = keyed[i].second;
     }
 
-    // compute spatial partition
-    int my_start = stars.size() * pid / nprocs;
-    int my_end   = stars.size() * (pid + 1) / nprocs;
+    int my_start, my_end;
 
-    // end of stars assignment 
+    if (stars[0].cost == 0) { // first iter
+        // naive spatial partition (even split)
+        my_start = stars.size() * pid / nprocs;
+        my_end   = stars.size() * (pid + 1) / nprocs;
+    } else {
+        std::vector<int> prefix(stars.size());
+        prefix[0] = stars[0].cost;
+        for (size_t i = 1; i < stars.size(); i++) {
+            prefix[i] = prefix[i-1] + stars[i].cost;
+        }
+
+        int total = prefix.back();
+
+        // compute boundaries up front for consistency 
+        std::vector<int> boundaries(nprocs + 1);
+        boundaries[0] = 0;
+        boundaries[nprocs] = stars.size();
+
+        for (int r = 1; r < nprocs; r++) {
+            int target = (int)((float)r / nprocs * total);
+            // Find first index where prefix >= target
+            boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
+                                - prefix.begin());
+        }
+
+        my_start = boundaries[pid];
+        my_end   = boundaries[pid + 1];
+    }
+
+    // -- end of stars assignment --
 
     auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
@@ -168,26 +196,38 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.y += s.vy * DT;
     }
 
-    // allgatherv support structures
+    // allgatherv support structures (updated to account for variable counts)
     auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
-    for (int vpid = 0; vpid < nprocs; vpid++) {
-        int node_start = NUM_STARS * vpid / nprocs;
-        int node_end = NUM_STARS * (vpid + 1) / nprocs;
-        counts[vpid] = (node_end - node_start) * sizeof(Star);
-    }
+
+    int my_count = (my_end - my_start) * sizeof(Star); 
+    MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+
+    // for (int vpid = 0; vpid < nprocs; vpid++) {
+    //     int node_start = NUM_STARS * vpid / nprocs;
+    //     int node_end = NUM_STARS * (vpid + 1) / nprocs;
+    //     counts[vpid] = (node_end - node_start) * sizeof(Star);
+    // }
 
     displs[0] = 0;
     for (int vpid = 1; vpid < nprocs; vpid++) {
         displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
     }
 
-    // gather updated stars to all ranks
+    // verify total size matches
+    int total_bytes = displs[nprocs-1] + counts[nprocs-1];
+    assert(total_bytes == (int)(stars.size() * sizeof(Star)));
+
+    // gather into a separate buffer to avoid aliasing
+    std::vector<Star> recv_buf(stars.size());
     MPI_Allgatherv(
-        &stars[my_start], (my_end - my_start) * sizeof(Star), MPI_BYTE,
-        stars.data(), counts.data(), displs.data(), MPI_BYTE,
+        &stars[my_start], my_count, MPI_BYTE,
+        recv_buf.data(), counts.data(), displs.data(), MPI_BYTE,
         MPI_COMM_WORLD
     );
+
+    stars = std::move(recv_buf);
+
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
 
