@@ -285,7 +285,7 @@ void mpi_distributed_main(int argc, char* argv[]) {
         if (mmpi_getpid() == 0) {
             quit = check_quit();
         }
-        mmpi_bcast(0, &quit, sizeof(bool));
+        mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
         if (quit) break;
     }
     auto run_end = chrono::now();
