@@ -193,36 +193,27 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 }
 
 /**
- * @brief Entry point for distributed mpi implementation
+ * @brief Run the simulation
  */
-void mpi_distributed_main(int argc, char* argv[]) {
-
-    use_mmpi = true;
-
-    printf("Hello MPI distributed\n");
-
-    if (argc != 4) {
-        fprintf(stderr, "Need 3 arguments for distributed\n");
-        exit(-1);
-    }
-
-    int init_pid = atoi(argv[2]);
-    int init_node_ct = atoi(argv[3]);
-
-    mmpi_init(init_pid, init_node_ct);
-    pid = mmpi_getpid();
-    nprocs = mmpi_getnodes();
-
+static void mpi_run_simulation(void) {
     if (pid == 0) display_init();
 
     std::vector<Star> stars;
     if (pid == 0) {
         stars = generate_galaxy();
         for (int receiver = 1; receiver < nprocs; receiver++) {
-            mmpi_send_vec<Star>(receiver, stars);
+            if (use_mmpi) {
+                mmpi_send_vec<Star>(receiver, stars);
+            } else {
+                mpi_send_stars(receiver, stars);
+            }
         }
     } else {
-        stars = mmpi_recv_vec<Star>(0);
+        if (use_mmpi) {
+            stars = mmpi_recv_vec<Star>(0);
+        } else {
+            stars = mpi_recv_stars(0);
+        }
     }
 
     auto run_start = chrono::now();
@@ -245,19 +236,52 @@ void mpi_distributed_main(int argc, char* argv[]) {
         if (pid == 0) {
             quit = check_quit();
         }
-        mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
+        
+        if (use_mmpi) {
+            mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
+        } else {
+            MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+        }
         if (quit) break;
     }
     auto run_end = chrono::now();
     millis run_time = run_end - run_start;
     if (pid == 0) display_cleanup();
 
-    mmpi_finalize();
+    if (use_mmpi) {
+        mmpi_finalize();
+    } else {
+        MPI_Finalize();
+    }
 
     if (pid == 0) {
         fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
             NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
     }
+}
+
+/**
+ * @brief Entry point for distributed mpi implementation
+ */
+void mpi_distributed_main(int argc, char* argv[]) {
+
+    use_mmpi = true;
+
+    printf("Hello MPI distributed\n");
+
+    if (argc != 4) {
+        fprintf(stderr, "Need 3 arguments for distributed\n");
+        exit(-1);
+    }
+
+    int init_pid = atoi(argv[2]);
+    int init_node_ct = atoi(argv[3]);
+
+    mmpi_init(init_pid, init_node_ct);
+    pid = init_pid;
+    nprocs = init_node_ct;
+
+    mpi_run_simulation();
 }
 
 /**
@@ -281,51 +305,5 @@ void mpi_single_main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
-    if (pid == 0) display_init();
-
-    std::vector<Star> stars;
-    if (pid == 0) {
-        stars = generate_galaxy();
-        for (int receiver = 1; receiver < nprocs; receiver++) {
-            mpi_send_stars(receiver, stars);
-        }
-    } else {
-        stars = mpi_recv_stars(0);
-    }
-
-    auto run_start = chrono::now();
-    for (int i = 0; i < NUM_ITERS; i++) {
-        if (pid == 0) {
-            display_render(stars);
-        }
-
-        auto start = chrono::now();
-
-        int avg_stars = mpi_iterate_simulation(stars);
-        
-        auto end = chrono::now();
-        millis frame_time = end - start;
-
-        if (pid == 0) {
-            fprintf(stdout, "Iteration took %.01fms, avg stars: %d/%ld\n", 
-                frame_time.count(), avg_stars, stars.size());
-        }
-
-        bool quit = false;
-        if (pid == 0) {
-            quit = check_quit();
-        }
-        MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
-        if (quit) break;
-    }
-    auto run_end = chrono::now();
-    millis run_time = run_end - run_start;
-    if (pid == 0) display_cleanup();
-    MPI_Finalize();
-
-    if (pid == 0) {
-        fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
-            NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
-    }
-
+    mpi_run_simulation();
 }
