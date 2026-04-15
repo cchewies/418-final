@@ -1,9 +1,10 @@
 /**
- * @file mpi_distributed.cpp
+ * @file mpi_parallel.cpp
  * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
  * @author Vanessa Lam (yatheil@andrew.cmu.edu)
  * 
- * Multi-node Barnes-Hut
+ * Single-node MPI Barnes-Hut
+ * Multi-node MMPI Barnes-Hut
  */
 
 #include "mpi_parallel.hpp"
@@ -73,41 +74,40 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     int my_start, my_end;
 
     // Unbalanced
-    // get node's allocation (pure naive)
-    // my_start = NUM_STARS * (pid) / nprocs;
-    // my_end = NUM_STARS * (pid+1) / nprocs;
+    my_start = NUM_STARS * (pid) / nprocs;
+    my_end = NUM_STARS * (pid+1) / nprocs;
 
     // Load balanced
-    if (stars[0].cost == 0) { // first iter
-        // naive allocation
-        my_start = stars.size() * (pid) / nprocs;
-        my_end = stars.size() * (pid+1) / nprocs;
-    } else {
-        // prefix-sum load balancing
+    // if (stars[0].cost == 0) { // first iter
+    //     // naive allocation
+    //     my_start = stars.size() * (pid) / nprocs;
+    //     my_end = stars.size() * (pid+1) / nprocs;
+    // } else {
+    //     // prefix-sum load balancing
 
-        std::vector<int> prefix(stars.size());
-        prefix[0] = stars[0].cost;
-        for (size_t i = 1; i < stars.size(); i++) {
-            prefix[i] = prefix[i-1] + stars[i].cost;
-        }
+    //     std::vector<int> prefix(stars.size());
+    //     prefix[0] = stars[0].cost;
+    //     for (size_t i = 1; i < stars.size(); i++) {
+    //         prefix[i] = prefix[i-1] + stars[i].cost;
+    //     }
 
-        int total = prefix.back();
+    //     int total = prefix.back();
 
-        // compute boundaries up front for consistency 
-        std::vector<int> boundaries(nprocs + 1);
-        boundaries[0] = 0;
-        boundaries[nprocs] = stars.size();
+    //     // compute boundaries up front for consistency 
+    //     std::vector<int> boundaries(nprocs + 1);
+    //     boundaries[0] = 0;
+    //     boundaries[nprocs] = stars.size();
 
-        for (int r = 1; r < nprocs; r++) {
-            int target = (int)((float)r / nprocs * total);
-            // Find first index where prefix >= target
-            boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
-                                - prefix.begin());
-        }
+    //     for (int r = 1; r < nprocs; r++) {
+    //         int target = (int)((float)r / nprocs * total);
+    //         // Find first index where prefix >= target
+    //         boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
+    //                             - prefix.begin());
+    //     }
 
-        my_start = boundaries[pid];
-        my_end   = boundaries[pid + 1];
-    }
+    //     my_start = boundaries[pid];
+    //     my_end   = boundaries[pid + 1];
+    // }
 
     // -- end of stars assignment --
     auto assign_end = chrono::now();
@@ -131,36 +131,34 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.vx += fx / s.mass * DT;
         s.vy += fy / s.mass * DT;
     }
-    auto force_end = chrono::now();
-    millis force_time = force_end - force_start;
-
     // update positions
     for (int i = my_start; i < my_end; i++) {
         Star& s = stars[i];
         s.x += s.vx * DT;
         s.y += s.vy * DT;
     }
+    auto force_end = chrono::now();
+    millis force_time = force_end - force_start;
 
     // allgatherv support structures
     auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
+    int my_count = (my_end - my_start) * sizeof(Star);
 
     // Unbalanced
-    // for (int vpid = 0; vpid < nprocs; vpid++) {
-    //     int node_start = NUM_STARS * vpid / nprocs;
-    //     int node_end = NUM_STARS * (vpid + 1) / nprocs;
-    //     counts[vpid] = (node_end - node_start) * sizeof(Star);
-    // }
+    for (int vpid = 0; vpid < nprocs; vpid++) {
+        int node_start = NUM_STARS * vpid / nprocs;
+        int node_end = NUM_STARS * (vpid + 1) / nprocs;
+        counts[vpid] = (node_end - node_start) * sizeof(Star);
+    }
 
     // Load balanced
-    int my_count = (my_end - my_start) * sizeof(Star);
-    counts[pid] = my_count;
-    if (use_mmpi) {
-        mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
-    } else {
-        int my_count = (my_end - my_start) * sizeof(Star); 
-        MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-    }
+    // counts[pid] = my_count;
+    // if (use_mmpi) {
+    //     mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
+    // } else {
+    //     MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    // }
 
     displs[0] = 0;
     for (int vpid = 1; vpid < nprocs; vpid++) {
