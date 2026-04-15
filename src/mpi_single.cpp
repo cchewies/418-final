@@ -267,7 +267,8 @@ void mpi_single_main(int argc, char* argv[]) {
         stars = mpi_recv_stars(0);
     }
 
-    while (1) {
+    auto run_start = chrono::now();
+    for (int i = 0; i < NUM_ITERS; i++) {
         if (pid == 0) {
             display_render(stars);
         }
@@ -291,8 +292,15 @@ void mpi_single_main(int argc, char* argv[]) {
         MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
         if (quit) break;
     }
+    auto run_end = chrono::now();
+    millis run_time = run_end - run_start;
     if (pid == 0) display_cleanup();
     MPI_Finalize();
+
+    if (pid == 0) {
+        fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
+            NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
+    }
 
 #else
 

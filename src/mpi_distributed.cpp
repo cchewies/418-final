@@ -265,7 +265,8 @@ void mpi_distributed_main(int argc, char* argv[]) {
         stars = mmpi_recv_vec<Star>(0);
     }
 
-    while (1) {
+    auto run_start = chrono::now();
+    for (int i = 0; i < NUM_ITERS; i++) {
         if (mmpi_getpid() == 0) {
             display_render(stars);
         }
@@ -287,7 +288,14 @@ void mpi_distributed_main(int argc, char* argv[]) {
         mmpi_bcast(0, &quit, sizeof(bool));
         if (quit) break;
     }
+    auto run_end = chrono::now();
+    millis run_time = run_end - run_start;
     if (mmpi_getpid() == 0) display_cleanup();
 
     mmpi_finalize();
+
+    if (mmpi_getpid() == 0) {
+        fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
+            NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
+    }
 }

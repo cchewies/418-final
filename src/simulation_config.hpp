@@ -7,6 +7,9 @@
 
 #pragma once
 
+// Iterations to run simulation for
+constexpr int NUM_ITERS = 100;
+
 // star count
 constexpr int NUM_STARS = 50000;
 
