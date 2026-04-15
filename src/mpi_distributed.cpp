@@ -79,8 +79,7 @@ static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
  */
 static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
-    
-    // start of spatial partitioning w Morton ordering 
+    // -- start of spatial partitioning w Morton ordering --
 
     // compute bounding box
     float min_x = stars[0].x, max_x = stars[0].x;
@@ -114,11 +113,44 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         stars[i] = keyed[i].second;
     }
 
-    // compute spatial partition
-    int my_start = stars.size() * mmpi_getpid() / mmpi_getnodes();
-    int my_end   = stars.size() * (mmpi_getpid() + 1) / mmpi_getnodes();
+    int my_start, my_end;
 
-    // end of stars assignment 
+    // // compute spatial partition (pure naive)
+    // my_start = stars.size() * mmpi_getpid() / mmpi_getnodes();
+    // my_end   = stars.size() * (mmpi_getpid() + 1) / mmpi_getnodes();
+
+    if (stars[0].cost == 0) { // first iter
+        // naive allocation
+        my_start = stars.size() * (mmpi_getpid()) / mmpi_getnodes();
+        my_end = stars.size() * (mmpi_getpid()+1) / mmpi_getnodes();
+    } else {
+        // prefix-sum load balancing
+
+        std::vector<int> prefix(stars.size());
+        prefix[0] = stars[0].cost;
+        for (size_t i = 1; i < stars.size(); i++) {
+            prefix[i] = prefix[i-1] + stars[i].cost;
+        }
+
+        int total = prefix.back();
+
+        // compute boundaries up front for consistency 
+        std::vector<int> boundaries(mmpi_getnodes() + 1);
+        boundaries[0] = 0;
+        boundaries[mmpi_getnodes()] = stars.size();
+
+        for (int r = 1; r < mmpi_getnodes(); r++) {
+            int target = (int)((float)r / mmpi_getnodes() * total);
+            // Find first index where prefix >= target
+            boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
+                                - prefix.begin());
+        }
+
+        my_start = boundaries[mmpi_getpid()];
+        my_end   = boundaries[mmpi_getpid() + 1];
+    }
+
+    // -- end of stars assignment --
 
     auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
@@ -155,11 +187,19 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     // allgatherv support structures
     auto comm_start = chrono::now();
     std::vector<int> counts(mmpi_getnodes()), displs(mmpi_getnodes());
-    for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
-        int node_start = NUM_STARS * vpid / mmpi_getnodes();
-        int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
-        counts[vpid] = (node_end - node_start) * sizeof(Star);
+
+    int my_count = (my_end - my_start) * sizeof(Star);
+    // MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD); // TODO: convert
+    counts[mmpi_getpid()] = my_count;
+    for (int r = 0; r < mmpi_getnodes(); r++) {
+        mmpi_bcast(r, &counts[r], sizeof(int));
     }
+
+    // for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
+    //     int node_start = NUM_STARS * vpid / mmpi_getnodes();
+    //     int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
+    //     counts[vpid] = (node_end - node_start) * sizeof(Star);
+    // }
 
     displs[0] = 0;
     for (int vpid = 1; vpid < mmpi_getnodes(); vpid++) {
@@ -167,7 +207,25 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // gather updated stars to all ranks
-    mmpi_syncv(stars.data(), stars.size() * sizeof(Star), counts.data(), displs.data());
+    // std::vector<Star> recv_buf(stars.size());
+    // mmpi_syncv(recv_buf.data(), stars.size() * sizeof(Star), counts.data(), displs.data()); // TODO: check
+    // stars = std::move(recv_buf);
+    // test -start-
+    std::vector<Star> recv_buf(stars.size());
+    std::memcpy(
+        recv_buf.data() + my_start,
+        stars.data() + my_start,
+        (my_end - my_start) * sizeof(Star)
+    );
+    mmpi_syncv(
+        recv_buf.data(),
+        stars.size() * sizeof(Star),
+        counts.data(),
+        displs.data()
+    );
+    stars = std::move(recv_buf);
+    // test -end-
+
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
 
