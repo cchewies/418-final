@@ -41,10 +41,9 @@ static void mmpi_init_coordinator(void) {
 
     // Create TCP socket
     int coord_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (coord_fd < 0) { 
-        perror("socket coordinator");
-        exit(1); 
-    }
+    if (coord_fd < 0) { perror("socket coordinator"); exit(1); }
+    int opt = 1;
+    setsockopt(coord_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     // Bind to port
     struct sockaddr_in addr;
@@ -121,6 +120,8 @@ static void mmpi_init_worker(void) {
     // Workers can now open pairwise connections
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd < 0) { perror("socket worker"); exit(1); }
+    int opt = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
@@ -346,6 +347,50 @@ void mmpi_barrier(void) {
 
 /**
  * @brief Gathers data from all nodes and delivers it to all
+ *        Each process contributes the same amount of data
+ * 
+ * @param buf Buffer to send from / recv into
+ * @param length Length of buffer in bytes
+ * @param contrib_bytes Bytes each node contributes
+ */
+void mmpi_sync(void* buf, int length, int contrib_bytes) {
+
+    // blocking ring only works with even or 1 node :(
+    assert(num_nodes == 1 || num_nodes % 2 == 0);
+
+    int num_steps = num_nodes - 1;
+
+    // send to next, recv from previous
+    for (int i = 0; i < num_steps; i++) {
+
+        auto sync_iter_start = chrono::now();
+
+        int recv_idx = (pid + num_nodes - i - 1) % num_nodes; // section of buffer to recv
+        int send_idx = (pid + num_nodes - i) % num_nodes;     // section of buffer to send
+
+        int next_pid = (pid + num_nodes  + 1) % num_nodes;   // next node
+        int prev_pid = (pid + num_nodes  - 1) % num_nodes;   // prev node
+
+        // odd sends first
+        // even recvs first
+        if (pid % 2 == 1) {
+            mmpi_send(next_pid, (char*)buf + (send_idx * contrib_bytes), contrib_bytes);
+            mmpi_recv(prev_pid, (char*)buf + (recv_idx * contrib_bytes), contrib_bytes);
+        } else {
+            mmpi_recv(prev_pid, (char*)buf + (recv_idx * contrib_bytes), contrib_bytes);
+            mmpi_send(next_pid, (char*)buf + (send_idx * contrib_bytes), contrib_bytes);
+        }
+
+        auto sync_iter_end = chrono::now();
+        millis sync_iter_time = sync_iter_end - sync_iter_start;
+
+        fprintf(stdout, "sync iteration took %.01fms\n", sync_iter_time.count());
+    }
+}
+
+
+/**
+ * @brief Gathers data from all nodes and delivers it to all
  *        Each process may contribute a different amount of data
  * 
  * @param buf Buffer to send from / recv into
@@ -362,6 +407,8 @@ void mmpi_syncv(void* buf, int length, int contribs[], int displs[]) {
 
     // send to next, recv from previous
     for (int i = 0; i < num_steps; i++) {
+
+        auto sync_iter_start = chrono::now();
 
         int recv_idx = (pid + num_nodes - i - 1) % num_nodes; // section of buffer to recv
         int send_idx = (pid + num_nodes - i) % num_nodes;     // section of buffer to send
@@ -382,5 +429,10 @@ void mmpi_syncv(void* buf, int length, int contribs[], int displs[]) {
             // printf("[%d] sending %d/%d to %d at %d\n", pid, contribs[send_idx], length, next_pid, displs[send_idx]);
             mmpi_send(next_pid, (char*)buf + displs[send_idx], contribs[send_idx]);
         }
+
+        auto sync_iter_end = chrono::now();
+        millis sync_iter_time = sync_iter_end - sync_iter_start;
+
+        fprintf(stdout, "syncv iteration took %.01fms\n", sync_iter_time.count());
     }
 }

@@ -12,6 +12,7 @@ void mmpi_send(int receiver, void* buf, int length);
 void mmpi_recv(int sender, void* buf, int length);
 void mmpi_bcast(int sender, void* buf, int length);
 void mmpi_barrier(void);
+void mmpi_sync(void* buf, int length, int contrib_bytes);
 void mmpi_syncv(void* buf, int length, int contribs[], int displs[]);
 
 /**

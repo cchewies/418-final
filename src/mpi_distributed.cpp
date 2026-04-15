@@ -81,6 +81,8 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     // -- start of spatial partitioning w Morton ordering --
 
+    auto assign_start = chrono::now();
+
     // compute bounding box
     float min_x = stars[0].x, max_x = stars[0].x;
     float min_y = stars[0].y, max_y = stars[0].y;
@@ -115,10 +117,12 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     int my_start, my_end;
 
-    // // compute spatial partition (pure naive)
-    // my_start = stars.size() * mmpi_getpid() / mmpi_getnodes();
-    // my_end   = stars.size() * (mmpi_getpid() + 1) / mmpi_getnodes();
+    // Unbalanced
+    // // get node's allocation (pure naive)
+    // my_start = NUM_STARS * (mmpi_getpid()) / mmpi_getnodes();
+    // my_end = NUM_STARS * (mmpi_getpid()+1) / mmpi_getnodes();
 
+    // Load balanced
     if (stars[0].cost == 0) { // first iter
         // naive allocation
         my_start = stars.size() * (mmpi_getpid()) / mmpi_getnodes();
@@ -151,6 +155,8 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // -- end of stars assignment --
+    auto assign_end = chrono::now();
+    millis assign_time = assign_end - assign_start;
 
     auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
@@ -158,10 +164,6 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     millis qtree_time = qtree_end - qtree_start;
 
     int total_ct = 0;
-
-    // // get node's allocation
-    // int my_start = NUM_STARS * (mmpi_getpid()) / mmpi_getnodes();
-    // int my_end = NUM_STARS * (mmpi_getpid()+1) / mmpi_getnodes();
 
     // update velocities
     auto force_start = chrono::now();
@@ -188,13 +190,12 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     auto comm_start = chrono::now();
     std::vector<int> counts(mmpi_getnodes()), displs(mmpi_getnodes());
 
+    // Load balanced
     int my_count = (my_end - my_start) * sizeof(Star);
-    // MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD); // TODO: convert
     counts[mmpi_getpid()] = my_count;
-    for (int r = 0; r < mmpi_getnodes(); r++) {
-        mmpi_bcast(r, &counts[r], sizeof(int));
-    }
+    mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
 
+    // Unbalanced
     // for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
     //     int node_start = NUM_STARS * vpid / mmpi_getnodes();
     //     int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
@@ -207,30 +208,13 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // gather updated stars to all ranks
-    // std::vector<Star> recv_buf(stars.size());
-    // mmpi_syncv(recv_buf.data(), stars.size() * sizeof(Star), counts.data(), displs.data()); // TODO: check
-    // stars = std::move(recv_buf);
-    // test -start-
-    std::vector<Star> recv_buf(stars.size());
-    std::memcpy(
-        recv_buf.data() + my_start,
-        stars.data() + my_start,
-        (my_end - my_start) * sizeof(Star)
-    );
-    mmpi_syncv(
-        recv_buf.data(),
-        stars.size() * sizeof(Star),
-        counts.data(),
-        displs.data()
-    );
-    stars = std::move(recv_buf);
-    // test -end-
+    mmpi_syncv(stars.data(), stars.size() * sizeof(Star), counts.data(), displs.data());
 
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
 
-    fprintf(stdout, "Qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
-            qtree_time.count(), force_time.count(), comm_time.count());
+    fprintf(stdout, "Assign took %.01fms, qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
+            assign_time.count(), qtree_time.count(), force_time.count(), comm_time.count());
 
     destroy_tree(root);
     return total_ct / (my_end - my_start);
