@@ -15,6 +15,9 @@
 #include <cmath>
 #include <algorithm>
 
+// MPI params
+static int pid, nprocs;
+
 /**
  * @brief Quadtree simulation step
  * 
@@ -63,14 +66,14 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     // Unbalanced
     // get node's allocation (pure naive)
-    my_start = NUM_STARS * (mmpi_getpid()) / mmpi_getnodes();
-    my_end = NUM_STARS * (mmpi_getpid()+1) / mmpi_getnodes();
+    my_start = NUM_STARS * (pid) / nprocs;
+    my_end = NUM_STARS * (pid+1) / nprocs;
 
     // Load balanced
     // if (stars[0].cost == 0) { // first iter
     //     // naive allocation
-    //     my_start = stars.size() * (mmpi_getpid()) / mmpi_getnodes();
-    //     my_end = stars.size() * (mmpi_getpid()+1) / mmpi_getnodes();
+    //     my_start = stars.size() * (pid) / nprocs;
+    //     my_end = stars.size() * (pid+1) / nprocs;
     // } else {
     //     // prefix-sum load balancing
 
@@ -83,19 +86,19 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     //     int total = prefix.back();
 
     //     // compute boundaries up front for consistency 
-    //     std::vector<int> boundaries(mmpi_getnodes() + 1);
+    //     std::vector<int> boundaries(nprocs + 1);
     //     boundaries[0] = 0;
-    //     boundaries[mmpi_getnodes()] = stars.size();
+    //     boundaries[nprocs] = stars.size();
 
-    //     for (int r = 1; r < mmpi_getnodes(); r++) {
-    //         int target = (int)((float)r / mmpi_getnodes() * total);
+    //     for (int r = 1; r < nprocs; r++) {
+    //         int target = (int)((float)r / nprocs * total);
     //         // Find first index where prefix >= target
     //         boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
     //                             - prefix.begin());
     //     }
 
-    //     my_start = boundaries[mmpi_getpid()];
-    //     my_end   = boundaries[mmpi_getpid() + 1];
+    //     my_start = boundaries[pid];
+    //     my_end   = boundaries[pid + 1];
     // }
 
     // -- end of stars assignment --
@@ -132,22 +135,22 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     // allgatherv support structures
     auto comm_start = chrono::now();
-    std::vector<int> counts(mmpi_getnodes()), displs(mmpi_getnodes());
+    std::vector<int> counts(nprocs), displs(nprocs);
 
     // Load balanced
     // int my_count = (my_end - my_start) * sizeof(Star);
-    // counts[mmpi_getpid()] = my_count;
+    // counts[pid] = my_count;
     // mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
 
     // Unbalanced
-    for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
-        int node_start = NUM_STARS * vpid / mmpi_getnodes();
-        int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
+    for (int vpid = 0; vpid < nprocs; vpid++) {
+        int node_start = NUM_STARS * vpid / nprocs;
+        int node_end = NUM_STARS * (vpid + 1) / nprocs;
         counts[vpid] = (node_end - node_start) * sizeof(Star);
     }
 
     displs[0] = 0;
-    for (int vpid = 1; vpid < mmpi_getnodes(); vpid++) {
+    for (int vpid = 1; vpid < nprocs; vpid++) {
         displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
     }
 
@@ -180,13 +183,15 @@ void mpi_distributed_main(int argc, char* argv[]) {
     int init_node_ct = atoi(argv[3]);
 
     mmpi_init(init_pid, init_node_ct);
+    pid = mmpi_getpid();
+    nprocs = mmpi_getnodes();
 
-    if (mmpi_getpid() == 0) display_init();
+    if (pid == 0) display_init();
 
     std::vector<Star> stars;
-    if (mmpi_getpid() == 0) {
+    if (pid == 0) {
         stars = generate_galaxy();
-        for (int receiver = 1; receiver < mmpi_getnodes(); receiver++) {
+        for (int receiver = 1; receiver < nprocs; receiver++) {
             mmpi_send_vec<Star>(receiver, stars);
         }
     } else {
@@ -195,7 +200,7 @@ void mpi_distributed_main(int argc, char* argv[]) {
 
     auto run_start = chrono::now();
     for (int i = 0; i < NUM_ITERS; i++) {
-        if (mmpi_getpid() == 0) {
+        if (pid == 0) {
             display_render(stars);
         }
 
@@ -210,7 +215,7 @@ void mpi_distributed_main(int argc, char* argv[]) {
             frame_time.count(), avg_stars, stars.size());
 
         bool quit = false;
-        if (mmpi_getpid() == 0) {
+        if (pid == 0) {
             quit = check_quit();
         }
         mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
@@ -218,11 +223,11 @@ void mpi_distributed_main(int argc, char* argv[]) {
     }
     auto run_end = chrono::now();
     millis run_time = run_end - run_start;
-    if (mmpi_getpid() == 0) display_cleanup();
+    if (pid == 0) display_cleanup();
 
     mmpi_finalize();
 
-    if (mmpi_getpid() == 0) {
+    if (pid == 0) {
         fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
             NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
     }

@@ -13,10 +13,10 @@
 #define MPI_BYTE 0
 #define MPI_C_BOOL 0
 
-void MPI_Init(...) {return;}
-void MPI_Finalize(...) {return;}
-void MPI_Comm_rank(...) {return;}
-void MPI_Comm_size(...) {return;}
-void MPI_Bcast(...) {return;}
-void MPI_Allgather(...) {return;}
-void MPI_Allgatherv(...) {return;}
+inline void MPI_Init(...) {return;}
+inline void MPI_Finalize(...) {return;}
+inline void MPI_Comm_rank(...) {return;}
+inline void MPI_Comm_size(...) {return;}
+inline void MPI_Bcast(...) {return;}
+inline void MPI_Allgather(...) {return;}
+inline void MPI_Allgatherv(...) {return;}
