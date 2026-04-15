@@ -1,3 +1,10 @@
+/**
+ * @file minimpi.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Mini-MPI implementation to run on CMU machines
+ */
+
 #include "minimpi.hpp"
 #include <stdio.h>
 #include <stdlib.h>
@@ -384,7 +391,7 @@ void mmpi_sync(void* buf, int length, int contrib_bytes) {
         auto sync_iter_end = chrono::now();
         millis sync_iter_time = sync_iter_end - sync_iter_start;
 
-        fprintf(stdout, "sync iteration took %.01fms\n", sync_iter_time.count());
+        // fprintf(stdout, "sync iteration took %.01fms\n", sync_iter_time.count());
     }
 }
 
@@ -433,6 +440,6 @@ void mmpi_syncv(void* buf, int length, int contribs[], int displs[]) {
         auto sync_iter_end = chrono::now();
         millis sync_iter_time = sync_iter_end - sync_iter_start;
 
-        fprintf(stdout, "syncv iteration took %.01fms\n", sync_iter_time.count());
+        // fprintf(stdout, "syncv iteration took %.01fms\n", sync_iter_time.count());
     }
 }

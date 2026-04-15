@@ -21,73 +21,12 @@
 
 #ifdef USE_MPI
 #include <mpi.h>
+#else
+#include "mpi_noop.hpp"
+#endif /* USE_MPI */
 
 // MPI params
 static int pid, nprocs;
-
-// expand 32-bit int into 64-bit w interleaved zeros
-static inline uint64_t expand_bits(uint32_t x) {
-    uint64_t v = x;
-    v = (v | (v << 16)) & 0x0000FFFF0000FFFFULL;
-    v = (v | (v << 8))  & 0x00FF00FF00FF00FFULL;
-    v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0FULL;
-    v = (v | (v << 2))  & 0x3333333333333333ULL;
-    v = (v | (v << 1))  & 0x5555555555555555ULL;
-    return v;
-}
-
-// 2D Morton encoding
-static inline uint64_t morton2D(float x, float y,
-                                float min_x, float min_y,
-                                float max_x, float max_y) {
-    float nx = (x - min_x) / (max_x - min_x); // normalize to [0, 1]
-    float ny = (y - min_y) / (max_y - min_y);
-    nx = std::min(1.0f, std::max(0.0f, nx));
-    ny = std::min(1.0f, std::max(0.0f, ny));
-    uint32_t ix = (uint32_t)(nx * ((1 << 21) - 1));
-    uint32_t iy = (uint32_t)(ny * ((1 << 21) - 1));
-    return (expand_bits(ix) << 1) | expand_bits(iy);
-}
-
-/**
- * @brief Barnes-hut force calculation
- * 
- * @param s Star to calculate total force for
- * @param node Node to add forces to
- * @param fx Reference to x force accumulator
- * @param fy Reference to y force accumulator
- * @return # of stars visited
- */
-static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
-
-    int star_count = 0;
-
-    // Node doesnt exist, no stars, no children, or star is current one
-    if (!node || node->mass == 0 || (node->s == &s && !node->nw)) {
-        return star_count;
-    }
-
-    float dx = node->com_x - s.x;
-    float dy = node->com_y - s.y;
-    float dist2 = dx*dx + dy*dy + EPS2;
-    float dist = std::sqrt(dist2);
-
-    if (!node->nw || node->side_len / dist < THETA) {
-        // no children
-        float force = G * s.mass * node->mass / dist2;
-        fx += force * dx / dist;
-        fy += force * dy / dist;
-        star_count++;
-    } else {
-        // children exist
-        star_count += compute_force(s, node->nw, fx, fy);
-        star_count += compute_force(s, node->ne, fx, fy);
-        star_count += compute_force(s, node->sw, fx, fy);
-        star_count += compute_force(s, node->se, fx, fy);
-    }
-
-    return star_count;
-}
 
 /**
  * @brief Quadtree simulation step
@@ -115,11 +54,11 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // compute keys
-    std::vector<std::pair<uint64_t, Star>> keyed;
+    std::vector<std::pair<u64, Star>> keyed;
     keyed.reserve(stars.size());
 
     for (const auto& s : stars) {
-        uint64_t key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
+        u64 key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
         keyed.emplace_back(key, s);
     }
 
@@ -240,8 +179,6 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     return total_ct / (my_end - my_start);
 }
 
-#endif /* USE_MPI */
-
 /**
  * @brief Entry point for single-node MPI implementation
  */
@@ -249,7 +186,13 @@ void mpi_single_main(int argc, char* argv[]) {
 
     fprintf(stderr, "Hello MPI single\n");
 
-#ifdef USE_MPI
+#ifndef USE_MPI
+
+    fprintf(stderr, "MPI not enabled!\n");
+    exit(-1);
+
+#endif /* USE_MPI */
+
     // Initialize MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
@@ -302,10 +245,4 @@ void mpi_single_main(int argc, char* argv[]) {
             NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
     }
 
-#else
-
-    fprintf(stderr, "MPI not enabled!\n");
-    exit(-1);
-
-#endif /* USE_MPI */
 }

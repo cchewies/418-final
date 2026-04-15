@@ -1,3 +1,10 @@
+/**
+ * @file minimpi.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * 
+ * Header for Mini-MPI
+ */
+
 #pragma once
 
 #include "compact_defines.h"

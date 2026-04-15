@@ -1,3 +1,11 @@
+/**
+ * @file mpi_distributed.cpp
+ * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
+ * @author Vanessa Lam (yatheil@andrew.cmu.edu)
+ * 
+ * Multi-node Barnes-Hut
+ */
+
 #include "mpi_distributed.hpp"
 #include "compact_defines.h"
 #include "minimpi.hpp"
@@ -6,70 +14,6 @@
 #include "quadtree.hpp"
 #include <cmath>
 #include <algorithm>
-
-// expand 32-bit int into 64-bit w interleaved zeros
-static inline u64 expand_bits(u32 x) {
-    u64 v = x;
-    v = (v | (v << 16)) & 0x0000FFFF0000FFFFULL;
-    v = (v | (v << 8))  & 0x00FF00FF00FF00FFULL;
-    v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0FULL;
-    v = (v | (v << 2))  & 0x3333333333333333ULL;
-    v = (v | (v << 1))  & 0x5555555555555555ULL;
-    return v;
-}
-
-// 2D Morton encoding
-static inline u64 morton2D(float x, float y,
-                           float min_x, float min_y,
-                           float max_x, float max_y) {
-    float nx = (x - min_x) / (max_x - min_x); // normalize to [0, 1]
-    float ny = (y - min_y) / (max_y - min_y);
-    nx = std::min(1.0f, std::max(0.0f, nx));
-    ny = std::min(1.0f, std::max(0.0f, ny));
-    u32 ix = (u32)(nx * ((1 << 21) - 1));
-    u32 iy = (u32)(ny * ((1 << 21) - 1));
-    return (expand_bits(ix) << 1) | expand_bits(iy);
-}
-
-/**
- * @brief Barnes-hut force calculation
- * 
- * @param s Star to calculate total force for
- * @param node Node to add forces to
- * @param fx Reference to x force accumulator
- * @param fy Reference to y force accumulator
- * @return # of stars visited
- */
-static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
-
-    int star_count = 0;
-
-    // Node doesnt exist, no stars, no children, or star is current one
-    if (!node || node->mass == 0 || (node->s == &s && !node->nw)) {
-        return star_count;
-    }
-
-    float dx = node->com_x - s.x;
-    float dy = node->com_y - s.y;
-    float dist2 = dx*dx + dy*dy + EPS2;
-    float dist = std::sqrt(dist2);
-
-    if (!node->nw || node->side_len / dist < THETA) {
-        // no children
-        float force = G * s.mass * node->mass / dist2;
-        fx += force * dx / dist;
-        fy += force * dy / dist;
-        star_count++;
-    } else {
-        // children exist
-        star_count += compute_force(s, node->nw, fx, fy);
-        star_count += compute_force(s, node->ne, fx, fy);
-        star_count += compute_force(s, node->sw, fx, fy);
-        star_count += compute_force(s, node->se, fx, fy);
-    }
-
-    return star_count;
-}
 
 /**
  * @brief Quadtree simulation step
@@ -118,41 +62,41 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     int my_start, my_end;
 
     // Unbalanced
-    // // get node's allocation (pure naive)
-    // my_start = NUM_STARS * (mmpi_getpid()) / mmpi_getnodes();
-    // my_end = NUM_STARS * (mmpi_getpid()+1) / mmpi_getnodes();
+    // get node's allocation (pure naive)
+    my_start = NUM_STARS * (mmpi_getpid()) / mmpi_getnodes();
+    my_end = NUM_STARS * (mmpi_getpid()+1) / mmpi_getnodes();
 
     // Load balanced
-    if (stars[0].cost == 0) { // first iter
-        // naive allocation
-        my_start = stars.size() * (mmpi_getpid()) / mmpi_getnodes();
-        my_end = stars.size() * (mmpi_getpid()+1) / mmpi_getnodes();
-    } else {
-        // prefix-sum load balancing
+    // if (stars[0].cost == 0) { // first iter
+    //     // naive allocation
+    //     my_start = stars.size() * (mmpi_getpid()) / mmpi_getnodes();
+    //     my_end = stars.size() * (mmpi_getpid()+1) / mmpi_getnodes();
+    // } else {
+    //     // prefix-sum load balancing
 
-        std::vector<int> prefix(stars.size());
-        prefix[0] = stars[0].cost;
-        for (size_t i = 1; i < stars.size(); i++) {
-            prefix[i] = prefix[i-1] + stars[i].cost;
-        }
+    //     std::vector<int> prefix(stars.size());
+    //     prefix[0] = stars[0].cost;
+    //     for (size_t i = 1; i < stars.size(); i++) {
+    //         prefix[i] = prefix[i-1] + stars[i].cost;
+    //     }
 
-        int total = prefix.back();
+    //     int total = prefix.back();
 
-        // compute boundaries up front for consistency 
-        std::vector<int> boundaries(mmpi_getnodes() + 1);
-        boundaries[0] = 0;
-        boundaries[mmpi_getnodes()] = stars.size();
+    //     // compute boundaries up front for consistency 
+    //     std::vector<int> boundaries(mmpi_getnodes() + 1);
+    //     boundaries[0] = 0;
+    //     boundaries[mmpi_getnodes()] = stars.size();
 
-        for (int r = 1; r < mmpi_getnodes(); r++) {
-            int target = (int)((float)r / mmpi_getnodes() * total);
-            // Find first index where prefix >= target
-            boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
-                                - prefix.begin());
-        }
+    //     for (int r = 1; r < mmpi_getnodes(); r++) {
+    //         int target = (int)((float)r / mmpi_getnodes() * total);
+    //         // Find first index where prefix >= target
+    //         boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
+    //                             - prefix.begin());
+    //     }
 
-        my_start = boundaries[mmpi_getpid()];
-        my_end   = boundaries[mmpi_getpid() + 1];
-    }
+    //     my_start = boundaries[mmpi_getpid()];
+    //     my_end   = boundaries[mmpi_getpid() + 1];
+    // }
 
     // -- end of stars assignment --
     auto assign_end = chrono::now();
@@ -191,16 +135,16 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     std::vector<int> counts(mmpi_getnodes()), displs(mmpi_getnodes());
 
     // Load balanced
-    int my_count = (my_end - my_start) * sizeof(Star);
-    counts[mmpi_getpid()] = my_count;
-    mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
+    // int my_count = (my_end - my_start) * sizeof(Star);
+    // counts[mmpi_getpid()] = my_count;
+    // mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
 
     // Unbalanced
-    // for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
-    //     int node_start = NUM_STARS * vpid / mmpi_getnodes();
-    //     int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
-    //     counts[vpid] = (node_end - node_start) * sizeof(Star);
-    // }
+    for (int vpid = 0; vpid < mmpi_getnodes(); vpid++) {
+        int node_start = NUM_STARS * vpid / mmpi_getnodes();
+        int node_end = NUM_STARS * (vpid + 1) / mmpi_getnodes();
+        counts[vpid] = (node_end - node_start) * sizeof(Star);
+    }
 
     displs[0] = 0;
     for (int vpid = 1; vpid < mmpi_getnodes(); vpid++) {

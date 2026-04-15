@@ -6,6 +6,7 @@
  */
 
 #include "quadtree.hpp"
+#include "simulation_config.hpp"
 
 #include <cassert>
 #include <vector>
@@ -149,4 +150,66 @@ void destroy_tree(QNode* node) {
 
     delete node;
     num_alloc--;
+}
+
+// expand 32-bit int into 64-bit w interleaved zeros
+u64 expand_bits(u32 x) {
+    u64 v = x;
+    v = (v | (v << 16)) & 0x0000FFFF0000FFFFULL;
+    v = (v | (v << 8))  & 0x00FF00FF00FF00FFULL;
+    v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0FULL;
+    v = (v | (v << 2))  & 0x3333333333333333ULL;
+    v = (v | (v << 1))  & 0x5555555555555555ULL;
+    return v;
+}
+
+// 2D Morton encoding
+u64 morton2D(float x, float y, float min_x, float min_y, float max_x, float max_y) {
+    float nx = (x - min_x) / (max_x - min_x); // normalize to [0, 1]
+    float ny = (y - min_y) / (max_y - min_y);
+    nx = std::min(1.0f, std::max(0.0f, nx));
+    ny = std::min(1.0f, std::max(0.0f, ny));
+    u32 ix = (u32)(nx * ((1 << 21) - 1));
+    u32 iy = (u32)(ny * ((1 << 21) - 1));
+    return (expand_bits(ix) << 1) | expand_bits(iy);
+}
+
+/**
+ * @brief Barnes-hut force calculation
+ * 
+ * @param s Star to calculate total force for
+ * @param node Node to add forces to
+ * @param fx Reference to x force accumulator
+ * @param fy Reference to y force accumulator
+ * @return # of stars visited
+ */
+int compute_force(Star& s, QNode* node, float& fx, float& fy) {
+
+    int star_count = 0;
+
+    // Node doesnt exist, no stars, no children, or star is current one
+    if (!node || node->mass == 0 || (node->s == &s && !node->nw)) {
+        return star_count;
+    }
+
+    float dx = node->com_x - s.x;
+    float dy = node->com_y - s.y;
+    float dist2 = dx*dx + dy*dy + EPS2;
+    float dist = std::sqrt(dist2);
+
+    if (!node->nw || node->side_len / dist < THETA) {
+        // no children
+        float force = G * s.mass * node->mass / dist2;
+        fx += force * dx / dist;
+        fy += force * dy / dist;
+        star_count++;
+    } else {
+        // children exist
+        star_count += compute_force(s, node->nw, fx, fy);
+        star_count += compute_force(s, node->ne, fx, fy);
+        star_count += compute_force(s, node->sw, fx, fy);
+        star_count += compute_force(s, node->se, fx, fy);
+    }
+
+    return star_count;
 }

@@ -28,3 +28,7 @@ struct QNode {
 
 QNode* build_qtree(std::vector<Star> &stars);
 void destroy_tree(QNode* node);
+
+u64 expand_bits(u32 x);
+u64 morton2D(float x, float y, float min_x, float min_y, float max_x, float max_y);
+int compute_force(Star& s, QNode* node, float& fx, float& fy);

@@ -77,46 +77,6 @@ void naive_main(int argc, char* argv[]) {
 }
 
 /**
- * @brief Barnes-hut force calculation
- * 
- * @param s Star to calculate total force for
- * @param node Node to add forces to
- * @param fx Reference to x force accumulator
- * @param fy Reference to y force accumulator
- * @return # of stars visited
- */
-static int compute_force(Star& s, QNode* node, float& fx, float& fy) {
-
-    int star_count = 0;
-
-    // Node doesnt exist, no stars, no children, or star is current one
-    if (!node || node->mass == 0 || (node->s == &s && !node->nw)) {
-        return star_count;
-    }
-
-    float dx = node->com_x - s.x;
-    float dy = node->com_y - s.y;
-    float dist2 = dx*dx + dy*dy + EPS2;
-    float dist = std::sqrt(dist2);
-
-    if (!node->nw || node->side_len / dist < THETA) {
-        // no children
-        float force = G * s.mass * node->mass / dist2;
-        fx += force * dx / dist;
-        fy += force * dy / dist;
-        star_count++;
-    } else {
-        // children exist
-        star_count += compute_force(s, node->nw, fx, fy);
-        star_count += compute_force(s, node->ne, fx, fy);
-        star_count += compute_force(s, node->sw, fx, fy);
-        star_count += compute_force(s, node->se, fx, fy);
-    }
-
-    return star_count;
-}
-
-/**
  * @brief Quadtree simulation step
  * 
  * @param stars Vector of stars
