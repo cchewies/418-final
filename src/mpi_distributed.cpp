@@ -8,8 +8,8 @@
 #include <algorithm>
 
 // expand 32-bit int into 64-bit w interleaved zeros
-static inline uint64_t expand_bits(uint32_t x) {
-    uint64_t v = x;
+static inline u64 expand_bits(u32 x) {
+    u64 v = x;
     v = (v | (v << 16)) & 0x0000FFFF0000FFFFULL;
     v = (v | (v << 8))  & 0x00FF00FF00FF00FFULL;
     v = (v | (v << 4))  & 0x0F0F0F0F0F0F0F0FULL;
@@ -19,15 +19,15 @@ static inline uint64_t expand_bits(uint32_t x) {
 }
 
 // 2D Morton encoding
-static inline uint64_t morton2D(float x, float y,
-                                float min_x, float min_y,
-                                float max_x, float max_y) {
+static inline u64 morton2D(float x, float y,
+                           float min_x, float min_y,
+                           float max_x, float max_y) {
     float nx = (x - min_x) / (max_x - min_x); // normalize to [0, 1]
     float ny = (y - min_y) / (max_y - min_y);
     nx = std::min(1.0f, std::max(0.0f, nx));
     ny = std::min(1.0f, std::max(0.0f, ny));
-    uint32_t ix = (uint32_t)(nx * ((1 << 21) - 1));
-    uint32_t iy = (uint32_t)(ny * ((1 << 21) - 1));
+    u32 ix = (u32)(nx * ((1 << 21) - 1));
+    u32 iy = (u32)(ny * ((1 << 21) - 1));
     return (expand_bits(ix) << 1) | expand_bits(iy);
 }
 
@@ -95,11 +95,11 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // compute keys
-    std::vector<std::pair<uint64_t, Star>> keyed;
+    std::vector<std::pair<u64, Star>> keyed;
     keyed.reserve(stars.size());
 
     for (const auto& s : stars) {
-        uint64_t key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
+        u64 key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
         keyed.emplace_back(key, s);
     }
 
