@@ -293,6 +293,32 @@ void mmpi_bcast(int sender, void* buf, int length) {
 
 }
 
+// /**
+//  * @brief Gathers data from all nodes and delivers it to all
+//  *        Each process may contribute a different amount of data
+//  * 
+//  * @param buf Buffer to send from / recv into
+//  * @param length Length of buffer in bytes
+//  * @param contribs Length of each pid's contributions 
+//  * @param displs Displacement of each pid's region
+//  */
+// void mmpi_syncv(void* buf, int length, int contribs[], int displs[]) {
+//     // TODO: temporary naive implementation
+//     if (pid == 0) {
+//         for (int i = 0; i < num_nodes; i++) {
+//             if (i == pid) {
+//                 continue;
+//             }
+
+//             mmpi_recv(i, (char*)buf + displs[i], contribs[i]);
+//         }
+//     } else {
+//         mmpi_send(0, (char*)buf + displs[pid], contribs[pid]);
+//     }
+
+//     mmpi_bcast(0, buf, length);
+// }
+
 /**
  * @brief Gathers data from all nodes and delivers it to all
  *        Each process may contribute a different amount of data
@@ -303,18 +329,33 @@ void mmpi_bcast(int sender, void* buf, int length) {
  * @param displs Displacement of each pid's region
  */
 void mmpi_syncv(void* buf, int length, int contribs[], int displs[]) {
-    // TODO: temporary naive implementation
-    if (pid == 0) {
-        for (int i = 0; i < num_nodes; i++) {
-            if (i == pid) {
-                continue;
-            }
 
-            mmpi_recv(i, (char*)buf + displs[i], contribs[i]);
+    // blocking ring only works with even or 1 node :(
+    assert(num_nodes == 1 || num_nodes % 2 == 0);
+
+    int num_steps = num_nodes - 1;
+
+    // send to next, recv from previous
+    for (int i = 0; i < num_steps; i++) {
+
+        int recv_idx = (pid + num_nodes - i - 1) % num_nodes; // section of buffer to recv
+        int send_idx = (pid + num_nodes - i) % num_nodes;     // section of buffer to send
+
+        int next_pid = (pid + num_nodes  + 1) % num_nodes;   // next node
+        int prev_pid = (pid + num_nodes  - 1) % num_nodes;   // prev node
+
+        // odd sends first
+        // even recvs first
+        if (pid % 2 == 1) {
+            printf("[%d] sending %d/%d to %d at %d\n", pid, contribs[send_idx], length, next_pid, displs[send_idx]);
+            mmpi_send(next_pid, (char*)buf + displs[send_idx], contribs[send_idx]);
+            printf("[%d] recving %d/%d to %d at %d\n", pid, contribs[recv_idx], length, prev_pid, displs[recv_idx]);
+            mmpi_recv(prev_pid, (char*)buf + displs[recv_idx], contribs[recv_idx]);
+        } else {
+            printf("[%d] recving %d/%d to %d at %d\n", pid, contribs[recv_idx], length, prev_pid, displs[recv_idx]);
+            mmpi_recv(prev_pid, (char*)buf + displs[recv_idx], contribs[recv_idx]);
+            printf("[%d] sending %d/%d to %d at %d\n", pid, contribs[send_idx], length, next_pid, displs[send_idx]);
+            mmpi_send(next_pid, (char*)buf + displs[send_idx], contribs[send_idx]);
         }
-    } else {
-        mmpi_send(0, (char*)buf + displs[pid], contribs[pid]);
     }
-
-    mmpi_bcast(0, buf, length);
 }
