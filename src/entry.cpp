@@ -12,8 +12,7 @@
 
 #include "compact_defines.h"
 #include "serial.hpp"
-#include "mpi_single.hpp"
-#include "mpi_distributed.hpp"
+#include "mpi_parallel.hpp"
 #include "display.hpp"
 
 /**

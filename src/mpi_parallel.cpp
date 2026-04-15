@@ -1,23 +1,20 @@
 /**
- * @file mpi_single.cpp
+ * @file mpi_distributed.cpp
  * @author Zhuoyi Zou (zhuoyiz@andrew.cmu.edu)
  * @author Vanessa Lam (yatheil@andrew.cmu.edu)
  * 
- * Single-node MPI Barnes-Hut
- * 
- * mpi: O(NlogN), single-node MPI
+ * Multi-node Barnes-Hut
  */
 
+#include "mpi_parallel.hpp"
 #include "compact_defines.h"
+#include "minimpi.hpp"
 #include "simulation_config.hpp"
-#include "mpi_single.hpp"
-#include "vector_mpi.hpp"
 #include "display.hpp"
 #include "quadtree.hpp"
+#include "vector_mpi.hpp"
 #include <cmath>
-#include <cstdint>
 #include <algorithm>
-#include <cassert>
 
 #ifdef USE_MPI
 #include <mpi.h>
@@ -27,6 +24,7 @@
 
 // MPI params
 static int pid, nprocs;
+static bool use_mmpi;
 
 /**
  * @brief Quadtree simulation step
@@ -36,11 +34,9 @@ static int pid, nprocs;
  */
 static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
-    // naive allocation
-    // int my_start = NUM_STARS * (pid) / nprocs;
-    // int my_end = NUM_STARS * (pid+1) / nprocs;
-
     // -- start of spatial partitioning w Morton ordering --
+
+    auto assign_start = chrono::now();
 
     // compute bounding box
     float min_x = stars[0].x, max_x = stars[0].x;
@@ -76,11 +72,19 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     int my_start, my_end;
 
+    // Unbalanced
+    // get node's allocation (pure naive)
+    // my_start = NUM_STARS * (pid) / nprocs;
+    // my_end = NUM_STARS * (pid+1) / nprocs;
+
+    // Load balanced
     if (stars[0].cost == 0) { // first iter
-        // naive spatial partition (even split)
-        my_start = stars.size() * pid / nprocs;
-        my_end   = stars.size() * (pid + 1) / nprocs;
+        // naive allocation
+        my_start = stars.size() * (pid) / nprocs;
+        my_end = stars.size() * (pid+1) / nprocs;
     } else {
+        // prefix-sum load balancing
+
         std::vector<int> prefix(stars.size());
         prefix[0] = stars[0].cost;
         for (size_t i = 1; i < stars.size(); i++) {
@@ -106,6 +110,8 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // -- end of stars assignment --
+    auto assign_end = chrono::now();
+    millis assign_time = assign_end - assign_start;
 
     auto qtree_start = chrono::now();
     QNode* root = build_qtree(stars);
@@ -135,44 +141,53 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.y += s.vy * DT;
     }
 
-    // allgatherv support structures (updated to account for variable counts)
+    // allgatherv support structures
     auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
 
-    int my_count = (my_end - my_start) * sizeof(Star); 
-    MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-
+    // Unbalanced
     // for (int vpid = 0; vpid < nprocs; vpid++) {
     //     int node_start = NUM_STARS * vpid / nprocs;
     //     int node_end = NUM_STARS * (vpid + 1) / nprocs;
     //     counts[vpid] = (node_end - node_start) * sizeof(Star);
     // }
 
+    // Load balanced
+    int my_count = (my_end - my_start) * sizeof(Star);
+    counts[pid] = my_count;
+    if (use_mmpi) {
+        mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
+    } else {
+        int my_count = (my_end - my_start) * sizeof(Star); 
+        MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    }
+
     displs[0] = 0;
     for (int vpid = 1; vpid < nprocs; vpid++) {
         displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
     }
 
-    // verify total size matches
-    int total_bytes = displs[nprocs-1] + counts[nprocs-1];
-    assert(total_bytes == (int)(stars.size() * sizeof(Star)));
+    // gather updated stars to all ranks
+    if (use_mmpi) {
+        mmpi_syncv(stars.data(), stars.size() * sizeof(Star), counts.data(), displs.data());
+    } else {
+        // gather into a separate buffer to avoid aliasing
+        std::vector<Star> recv_buf(stars.size());
+        MPI_Allgatherv(
+            &stars[my_start], my_count, MPI_BYTE,
+            recv_buf.data(), counts.data(), displs.data(), MPI_BYTE,
+            MPI_COMM_WORLD
+        );
 
-    // gather into a separate buffer to avoid aliasing
-    std::vector<Star> recv_buf(stars.size());
-    MPI_Allgatherv(
-        &stars[my_start], my_count, MPI_BYTE,
-        recv_buf.data(), counts.data(), displs.data(), MPI_BYTE,
-        MPI_COMM_WORLD
-    );
-
-    stars = std::move(recv_buf);
+        stars = std::move(recv_buf);
+    }
 
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
 
-    if (pid == 0) {
-        fprintf(stdout, "Qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
-                qtree_time.count(), force_time.count(), comm_time.count());
+    if (use_mmpi || pid == 0) {
+        fprintf(stdout, "Assign took %.01fms, qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
+                assign_time.count(), qtree_time.count(), force_time.count(), comm_time.count());
     }
 
     destroy_tree(root);
@@ -180,9 +195,79 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 }
 
 /**
+ * @brief Entry point for distributed mpi implementation
+ */
+void mpi_distributed_main(int argc, char* argv[]) {
+
+    use_mmpi = true;
+
+    printf("Hello MPI distributed\n");
+
+    if (argc != 4) {
+        fprintf(stderr, "Need 3 arguments for distributed\n");
+        exit(-1);
+    }
+
+    int init_pid = atoi(argv[2]);
+    int init_node_ct = atoi(argv[3]);
+
+    mmpi_init(init_pid, init_node_ct);
+    pid = mmpi_getpid();
+    nprocs = mmpi_getnodes();
+
+    if (pid == 0) display_init();
+
+    std::vector<Star> stars;
+    if (pid == 0) {
+        stars = generate_galaxy();
+        for (int receiver = 1; receiver < nprocs; receiver++) {
+            mmpi_send_vec<Star>(receiver, stars);
+        }
+    } else {
+        stars = mmpi_recv_vec<Star>(0);
+    }
+
+    auto run_start = chrono::now();
+    for (int i = 0; i < NUM_ITERS; i++) {
+        if (pid == 0) {
+            display_render(stars);
+        }
+
+        auto start = chrono::now();
+
+        int avg_stars = mpi_iterate_simulation(stars);
+        
+        auto end = chrono::now();
+        millis frame_time = end - start;
+
+        fprintf(stdout, "Iteration took %.01fms, avg stars: %d/%ld\n", 
+            frame_time.count(), avg_stars, stars.size());
+
+        bool quit = false;
+        if (pid == 0) {
+            quit = check_quit();
+        }
+        mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
+        if (quit) break;
+    }
+    auto run_end = chrono::now();
+    millis run_time = run_end - run_start;
+    if (pid == 0) display_cleanup();
+
+    mmpi_finalize();
+
+    if (pid == 0) {
+        fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
+            NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
+    }
+}
+
+/**
  * @brief Entry point for single-node MPI implementation
  */
 void mpi_single_main(int argc, char* argv[]) {
+
+    use_mmpi = false;
 
     fprintf(stderr, "Hello MPI single\n");
 
