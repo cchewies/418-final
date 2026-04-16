@@ -142,6 +142,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
     auto force_end = chrono::now();
     millis force_time = force_end - force_start;
+    millis compute_time = force_end - assign_start;
 
     // allgatherv support structures
     auto comm_start = chrono::now();
@@ -185,6 +186,14 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     for (int i = 0; i < NUM_STARS; i++) {
         stars[i].pos = positions[i];
     }
+
+    // printf("I took %.01fms\n", compute_time.count());
+    std::vector<double> compute_times(nprocs);
+    compute_times[pid] = compute_time.count();
+    mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
+    // for (int i = 0; i < nprocs; i++) {
+    //     printf("pid %d took %.01fms\n", i, compute_times[i]);
+    // }
 
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;

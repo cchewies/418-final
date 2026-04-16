@@ -28,8 +28,8 @@ static void naive_iterate_simulation(std::vector<Star> &stars) {
         float fy = 0;
         for (size_t j = 0; j < stars.size(); j++) {
             if (i == j) continue;
-            float dx = stars[j].x - stars[i].x;
-            float dy = stars[j].y - stars[i].y;
+            float dx = stars[j].pos.x - stars[i].pos.x;
+            float dy = stars[j].pos.y - stars[i].pos.y;
             float dist2 = dx*dx + dy*dy + EPS2;
             float dist = sqrt(dist2);
             float force = G * stars[i].mass * stars[j].mass / dist2;
@@ -42,8 +42,8 @@ static void naive_iterate_simulation(std::vector<Star> &stars) {
 
     // update positions
     for (auto& s : stars) {
-        s.x += s.vx * DT;
-        s.y += s.vy * DT;
+        s.pos.x += s.vx * DT;
+        s.pos.y += s.vy * DT;
     }
 }
 
@@ -108,8 +108,8 @@ static int serial_iterate_simulation(std::vector<Star> &stars) {
 
     // update positions
     for (auto& s : stars) {
-        s.x += s.vx * DT;
-        s.y += s.vy * DT;
+        s.pos.x += s.vx * DT;
+        s.pos.y += s.vy * DT;
     }
 
     fprintf(stdout, "Qtree took %.01fms, force took %.01fms\n", 

@@ -26,8 +26,8 @@ static std::vector<Star> random_blob(void) {
 
     // center black hole
     Star black_hole;
-    black_hole.x = center_x;
-    black_hole.y = center_y;
+    black_hole.pos.x = center_x;
+    black_hole.pos.y = center_y;
     black_hole.vx = 0;
     black_hole.vy = 0;
     black_hole.mass = 1000;
@@ -41,15 +41,15 @@ static std::vector<Star> random_blob(void) {
         float angle = 2 * M_PI * ((float)std::rand() / RAND_MAX);
 
         // Polar to Cartesian
-        s.x = center_x + r * cos(angle);
-        s.y = center_y + r * sin(angle);
+        s.pos.x = center_x + r * cos(angle);
+        s.pos.y = center_y + r * sin(angle);
 
         // random mass between 1 and 2
         s.mass = 1 + ((float)(std::rand() % 10) / 10);
 
         // tangent velocity + random bits
-        float dx = s.x - center_x;
-        float dy = s.y - center_y;
+        float dx = s.pos.x - center_x;
+        float dy = s.pos.y - center_y;
         float dist = sqrt(dx*dx + dy*dy);
         float v_circ = (1+3*(r*r/galaxy_radius/galaxy_radius)) * sqrt(G * black_hole.mass / (dist + 1));
         s.vx = -dy / dist * v_circ;
