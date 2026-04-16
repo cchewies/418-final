@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cmath>
 
+#define STAR_EPSILON 0.00001
+
 static int num_alloc = 0;
 
 /**
@@ -90,6 +92,16 @@ static void insert_star(QNode* node, Star* s) {
         // reinsert existing star
         Star* old = node->s;
         node->s = nullptr;
+
+        // if stars are the same position, add a little bit of difference
+        if (old->pos.x == s->pos.x && old->pos.y == s->pos.y) {
+            printf("COLLISION AVOIDED\n");
+            old->pos.x -= STAR_EPSILON;
+            old->pos.y += STAR_EPSILON;
+            s->pos.x += STAR_EPSILON;
+            s->pos.y -= STAR_EPSILON;
+        }
+
         insert_star(get_child(node, old), old);
     }
 
