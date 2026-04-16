@@ -261,13 +261,18 @@ static void mpi_run_simulation(void) {
             if (quit) break;
         }
 
-        fprintf(stdout, "This batch took on average:\n");
-        // printf("I took %.01fms\n", compute_time.count());
         std::vector<double> compute_times(nprocs);
         compute_times[pid] = compute_sum;
-        mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
-        for (int i = 0; i < nprocs; i++) {
-            printf("  [%d] took %.01fms\n", i, compute_times[i]/LOAD_BALANCING_ITERS);
+        if (use_mmpi) {
+            mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
+        } else {
+            MPI_Allgather(&compute_sum, 1, MPI_DOUBLE, compute_times.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+        }
+        if (pid == 0) {
+            fprintf(stdout, "This batch took on average:\n");
+            for (int i = 0; i < nprocs; i++) {
+                printf("  [%d] took %.01fms\n", i, compute_times[i]/LOAD_BALANCING_ITERS);
+            }
         }
     }
 
