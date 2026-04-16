@@ -11,7 +11,14 @@
 
 
 struct StarPos {
-    float x, y;     // position
+    union {
+        struct {
+            float x, y;     // position
+        };
+        struct {
+            double runtime;
+        };
+    };
 };
 
 struct Star {

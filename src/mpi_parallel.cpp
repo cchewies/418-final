@@ -27,13 +27,18 @@
 static int pid, nprocs;
 static bool use_mmpi;
 
+
+std::vector<std::pair<u64, Star>> keyed;
+
 /**
  * @brief Quadtree simulation step
  * 
  * @param stars Vector of stars
+ * @param positions Preallocated positions vector
  * @return average # of stars visited
  */
-static int mpi_iterate_simulation(std::vector<Star> &stars) {
+static int mpi_iterate_simulation(std::vector<Star> &stars,
+                                  std::vector<StarPos> &positions) {
 
     // -- start of spatial partitioning w Morton ordering --
 
@@ -51,7 +56,6 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     }
 
     // compute keys
-    std::vector<std::pair<u64, Star>> keyed;
     keyed.reserve(stars.size());
 
     for (const auto& s : stars) {
@@ -118,6 +122,8 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     auto qtree_end = chrono::now();
     millis qtree_time = qtree_end - qtree_start;
 
+    
+
     int total_ct = 0;
 
     // update velocities
@@ -132,13 +138,11 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.vy += fy / s.mass * DT;
     }
     // update positions and put into aux struct
-    std::vector<StarPos> positions(NUM_STARS);
-    positions.resize(NUM_STARS);
     for (int i = my_start; i < my_end; i++) {
         Star& s = stars[i];
         s.pos.x += s.vx * DT;
         s.pos.y += s.vy * DT;
-        positions[i] = s.pos;
+        positions[i+pid+1] = s.pos;
     }
     auto force_end = chrono::now();
     millis force_time = force_end - force_start;
@@ -147,13 +151,13 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     // allgatherv support structures
     auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
-    int my_count = (my_end - my_start) * sizeof(StarPos);
+    int my_count = (my_end - my_start + 1) * sizeof(StarPos);       // +1 for timing
 
     // Unbalanced
     for (int vpid = 0; vpid < nprocs; vpid++) {
         int node_start = NUM_STARS * vpid / nprocs;
         int node_end = NUM_STARS * (vpid + 1) / nprocs;
-        counts[vpid] = (node_end - node_start) * sizeof(StarPos);
+        counts[vpid] = (node_end - node_start + 1) * sizeof(StarPos);   // +1 for timing
     }
 
     // Load balanced
@@ -168,6 +172,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     for (int vpid = 1; vpid < nprocs; vpid++) {
         displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
     }
+    positions[displs[pid]/((int)sizeof(StarPos))].runtime = compute_time.count();
 
     // gather updated stars to all ranks
     if (use_mmpi) {
@@ -183,17 +188,36 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
         positions = std::move(recv_buf);
     }
-    for (int i = 0; i < NUM_STARS; i++) {
-        stars[i].pos = positions[i];
-    }
 
-    // printf("I took %.01fms\n", compute_time.count());
-    std::vector<double> compute_times(nprocs);
-    compute_times[pid] = compute_time.count();
-    mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
-    // for (int i = 0; i < nprocs; i++) {
-    //     printf("pid %d took %.01fms\n", i, compute_times[i]);
+    int star_idx = 0;
+    int pos_idx = 0;
+    for (int vpid = 0; vpid < nprocs; vpid++) {
+        pos_idx++;
+
+        int num_elems = counts[vpid] / ((int)sizeof(StarPos)) - 1;
+        for (int i = 0; i < num_elems; i++) {
+            stars[star_idx].pos = positions[pos_idx];
+            // printf("%f\n", stars[star_idx].pos.x);
+            star_idx++;
+            pos_idx++;
+        }
+    }
+    // for (int i = 0; i < NUM_STARS; i++) {
+    //     stars[i].pos = positions[i];
     // }
+
+    printf("I took %.01fms\n", compute_time.count());
+    std::vector<double> compute_times(nprocs);
+
+    // for (auto p : positions) {
+    //     printf("%f %f\n", p.x, p.runtime);
+    // }
+
+    for (int i = 0; i < nprocs; i++) {
+        compute_times[i] = positions[displs[i]/((int)sizeof(StarPos))].runtime;
+        printf("pid %d took %.01fms\n", i, compute_times[i]);
+    }
+    // mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
 
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
@@ -231,6 +255,9 @@ static void mpi_run_simulation(void) {
         }
     }
 
+    std::vector<StarPos> positions(NUM_STARS+nprocs);
+    positions.resize(NUM_STARS+nprocs);
+
     auto run_start = chrono::now();
     for (int i = 0; i < NUM_ITERS; i++) {
         if (pid == 0) {
@@ -239,7 +266,7 @@ static void mpi_run_simulation(void) {
 
         auto start = chrono::now();
 
-        int avg_stars = mpi_iterate_simulation(stars);
+        int avg_stars = mpi_iterate_simulation(stars, positions);
         
         auto end = chrono::now();
         millis frame_time = end - start;

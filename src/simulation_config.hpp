@@ -8,10 +8,10 @@
 #pragma once
 
 // Iterations to run simulation for
-constexpr int NUM_ITERS = 100;
+constexpr int NUM_ITERS = 100000;
 
 // star count
-constexpr int NUM_STARS = 50000;
+constexpr int NUM_STARS = 5000;
 
 // Simulation time interval
 constexpr float DT = 0.001;

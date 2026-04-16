@@ -65,8 +65,8 @@ void display_render(std::vector<Star> &stars) {
         int size = std::max(1, (int)(std::log(mass + 1) * 3)); 
 
         SDL_Rect rect;
-        rect.x = static_cast<int>(s.x) - size / 2;
-        rect.y = static_cast<int>(s.y) - size / 2;
+        rect.x = static_cast<int>(s.pos.x) - size / 2;
+        rect.y = static_cast<int>(s.pos.y) - size / 2;
         rect.w = size;
         rect.h = size;
 
