@@ -32,10 +32,10 @@ static bool use_mmpi;
  * 
  * @param stars Vector of stars
  * @param positions Preallocated positions vector
- * @return average # of stars visited
+ * @return Time spent in compute step
  */
-static int mpi_iterate_simulation(std::vector<Star> &stars,
-                                  std::vector<StarPos> &positions) {
+static float mpi_iterate_simulation(std::vector<Star> &stars,
+                                    std::vector<StarPos> &positions) {
 
     // -- start of spatial partitioning w Morton ordering --
 
@@ -187,14 +187,6 @@ static int mpi_iterate_simulation(std::vector<Star> &stars,
         stars[i].pos = positions[i];
     }
 
-    // printf("I took %.01fms\n", compute_time.count());
-    std::vector<double> compute_times(nprocs);
-    compute_times[pid] = compute_time.count();
-    mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
-    // for (int i = 0; i < nprocs; i++) {
-    //     printf("pid %d took %.01fms\n", i, compute_times[i]);
-    // }
-
     auto comm_end = chrono::now();
     millis comm_time = comm_end - comm_start;
 
@@ -204,7 +196,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars,
     }
 
     destroy_tree(root);
-    return total_ct / (my_end - my_start);
+    return compute_time.count();
 }
 
 /**
@@ -235,33 +227,50 @@ static void mpi_run_simulation(void) {
     positions.resize(NUM_STARS);
 
     auto run_start = chrono::now();
-    for (int i = 0; i < NUM_ITERS; i++) {
-        if (pid == 0) {
-            display_render(stars);
+
+    for (int i = 0; i < NUM_ITERS/LOAD_BALANCING_ITERS; i++) {
+
+        double compute_sum = 0;
+
+        for (int b = 0; b < LOAD_BALANCING_ITERS; b++) {
+            if (pid == 0) {
+                display_render(stars);
+            }
+    
+            auto start = chrono::now();
+    
+            float compute_time = mpi_iterate_simulation(stars, positions);
+            compute_sum += compute_time;
+            
+            auto end = chrono::now();
+            millis frame_time = end - start;
+    
+            fprintf(stdout, "Iteration took %.01fms, with compute taking %.01fms\n", 
+                frame_time.count(), compute_time);
+    
+            bool quit = false;
+            if (pid == 0) {
+                quit = check_quit();
+            }
+            
+            if (use_mmpi) {
+                mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
+            } else {
+                MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+            }
+            if (quit) break;
         }
 
-        auto start = chrono::now();
-
-        int avg_stars = mpi_iterate_simulation(stars, positions);
-        
-        auto end = chrono::now();
-        millis frame_time = end - start;
-
-        fprintf(stdout, "Iteration took %.01fms, avg stars: %d/%ld\n", 
-            frame_time.count(), avg_stars, stars.size());
-
-        bool quit = false;
-        if (pid == 0) {
-            quit = check_quit();
+        fprintf(stdout, "This batch took on average:\n");
+        // printf("I took %.01fms\n", compute_time.count());
+        std::vector<double> compute_times(nprocs);
+        compute_times[pid] = compute_sum;
+        mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
+        for (int i = 0; i < nprocs; i++) {
+            printf("  [%d] took %.01fms\n", i, compute_times[i]/LOAD_BALANCING_ITERS);
         }
-        
-        if (use_mmpi) {
-            mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
-        } else {
-            MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
-        }
-        if (quit) break;
     }
+
     auto run_end = chrono::now();
     millis run_time = run_end - run_start;
     if (pid == 0) display_cleanup();

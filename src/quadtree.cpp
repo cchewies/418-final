@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cmath>
 
-#define STAR_EPSILON 0.00001
+#define STAR_EPSILON 0.01
 
 static int num_alloc = 0;
 

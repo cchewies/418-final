@@ -24,3 +24,6 @@ constexpr float THETA = 0.5;
 
 // softening
 constexpr float EPS2 = 1;
+
+// dynamic load balancing granularity
+constexpr int LOAD_BALANCING_ITERS = 10;
