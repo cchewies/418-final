@@ -40,14 +40,14 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     auto assign_start = chrono::now();
 
     // compute bounding box
-    float min_x = stars[0].x, max_x = stars[0].x;
-    float min_y = stars[0].y, max_y = stars[0].y;
+    float min_x = stars[0].pos.x, max_x = stars[0].pos.x;
+    float min_y = stars[0].pos.y, max_y = stars[0].pos.y;
 
     for (const auto& s : stars) {
-        min_x = std::min(min_x, s.x);
-        max_x = std::max(max_x, s.x);
-        min_y = std::min(min_y, s.y);
-        max_y = std::max(max_y, s.y);
+        min_x = std::min(min_x, s.pos.x);
+        max_x = std::max(max_x, s.pos.x);
+        min_y = std::min(min_y, s.pos.y);
+        max_y = std::max(max_y, s.pos.y);
     }
 
     // compute keys
@@ -55,7 +55,7 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     keyed.reserve(stars.size());
 
     for (const auto& s : stars) {
-        u64 key = morton2D(s.x, s.y, min_x, min_y, max_x, max_y);
+        u64 key = morton2D(s.pos.x, s.pos.y, min_x, min_y, max_x, max_y);
         keyed.emplace_back(key, s);
     }
 
@@ -131,11 +131,14 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.vx += fx / s.mass * DT;
         s.vy += fy / s.mass * DT;
     }
-    // update positions
+    // update positions and put into aux struct
+    std::vector<StarPos> positions(NUM_STARS);
+    positions.resize(NUM_STARS);
     for (int i = my_start; i < my_end; i++) {
         Star& s = stars[i];
-        s.x += s.vx * DT;
-        s.y += s.vy * DT;
+        s.pos.x += s.vx * DT;
+        s.pos.y += s.vy * DT;
+        positions[i] = s.pos;
     }
     auto force_end = chrono::now();
     millis force_time = force_end - force_start;
@@ -143,13 +146,13 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
     // allgatherv support structures
     auto comm_start = chrono::now();
     std::vector<int> counts(nprocs), displs(nprocs);
-    int my_count = (my_end - my_start) * sizeof(Star);
+    int my_count = (my_end - my_start) * sizeof(StarPos);
 
     // Unbalanced
     for (int vpid = 0; vpid < nprocs; vpid++) {
         int node_start = NUM_STARS * vpid / nprocs;
         int node_end = NUM_STARS * (vpid + 1) / nprocs;
-        counts[vpid] = (node_end - node_start) * sizeof(Star);
+        counts[vpid] = (node_end - node_start) * sizeof(StarPos);
     }
 
     // Load balanced
@@ -167,17 +170,20 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
 
     // gather updated stars to all ranks
     if (use_mmpi) {
-        mmpi_syncv(stars.data(), stars.size() * sizeof(Star), counts.data(), displs.data());
+        mmpi_syncv(positions.data(), positions.size() * sizeof(StarPos), counts.data(), displs.data());
     } else {
         // gather into a separate buffer to avoid aliasing
-        std::vector<Star> recv_buf(stars.size());
+        std::vector<StarPos> recv_buf(positions.size());
         MPI_Allgatherv(
-            &stars[my_start], my_count, MPI_BYTE,
+            &positions[my_start], my_count, MPI_BYTE,
             recv_buf.data(), counts.data(), displs.data(), MPI_BYTE,
             MPI_COMM_WORLD
         );
 
-        stars = std::move(recv_buf);
+        positions = std::move(recv_buf);
+    }
+    for (int i = 0; i < NUM_STARS; i++) {
+        stars[i].pos = positions[i];
     }
 
     auto comm_end = chrono::now();

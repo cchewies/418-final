@@ -54,11 +54,11 @@ static void subdivide(QNode* node) {
  * @return Reference to the child cell
  */
 static QNode*& get_child(QNode* node, Star* s) {
-    if (s->x < node->cx) {
-        if (s->y < node->cy) return node->sw;
+    if (s->pos.x < node->cx) {
+        if (s->pos.y < node->cy) return node->sw;
         else return node->nw;
     } else {
-        if (s->y < node->cy) return node->se;
+        if (s->pos.y < node->cy) return node->se;
         else return node->ne;
     }
 }
@@ -73,8 +73,8 @@ static void insert_star(QNode* node, Star* s) {
     // update mass and center of mass
     float new_mass = node->mass + s->mass;
     assert(new_mass != 0);  // we dont have 0 mass stars
-    node->com_x = (node->com_x * node->mass + s->x * s->mass) / new_mass;
-    node->com_y = (node->com_y * node->mass + s->y * s->mass) / new_mass;
+    node->com_x = (node->com_x * node->mass + s->pos.x * s->mass) / new_mass;
+    node->com_y = (node->com_y * node->mass + s->pos.y * s->mass) / new_mass;
     node->mass = new_mass;
 
     // empty leaf, just insert star
@@ -108,14 +108,14 @@ QNode* build_qtree(std::vector<Star>& stars) {
     assert(num_alloc == 0);
 
     // compute bounding box
-    float min_x = stars[0].x, max_x = stars[0].x;
-    float min_y = stars[0].y, max_y = stars[0].y;
+    float min_x = stars[0].pos.x, max_x = stars[0].pos.x;
+    float min_y = stars[0].pos.y, max_y = stars[0].pos.y;
 
     for (auto& s : stars) {
-        min_x = std::min(min_x, s.x);
-        max_x = std::max(max_x, s.x);
-        min_y = std::min(min_y, s.y);
-        max_y = std::max(max_y, s.y);
+        min_x = std::min(min_x, s.pos.x);
+        max_x = std::max(max_x, s.pos.x);
+        min_y = std::min(min_y, s.pos.y);
+        max_y = std::max(max_y, s.pos.y);
     }
 
     float cx = (min_x + max_x) / 2.0f;
@@ -192,8 +192,8 @@ int compute_force(Star& s, QNode* node, float& fx, float& fy) {
         return star_count;
     }
 
-    float dx = node->com_x - s.x;
-    float dy = node->com_y - s.y;
+    float dx = node->com_x - s.pos.x;
+    float dy = node->com_y - s.pos.y;
     float dist2 = dx*dx + dy*dy + EPS2;
     float dist = std::sqrt(dist2);
 

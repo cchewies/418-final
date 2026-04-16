@@ -9,8 +9,13 @@
 #include "compact_defines.h"
 #include <vector>
 
-struct Star {
+
+struct StarPos {
     float x, y;     // position
+};
+
+struct Star {
+    StarPos pos;
     float vx, vy;   // velocity
     float mass;     // mass
 
