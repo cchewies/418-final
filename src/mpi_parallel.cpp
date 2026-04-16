@@ -31,9 +31,11 @@ static bool use_mmpi;
  * @brief Quadtree simulation step
  * 
  * @param stars Vector of stars
+ * @param positions Preallocated positions vector
  * @return average # of stars visited
  */
-static int mpi_iterate_simulation(std::vector<Star> &stars) {
+static int mpi_iterate_simulation(std::vector<Star> &stars,
+                                  std::vector<StarPos> &positions) {
 
     // -- start of spatial partitioning w Morton ordering --
 
@@ -132,8 +134,6 @@ static int mpi_iterate_simulation(std::vector<Star> &stars) {
         s.vy += fy / s.mass * DT;
     }
     // update positions and put into aux struct
-    std::vector<StarPos> positions(NUM_STARS);
-    positions.resize(NUM_STARS);
     for (int i = my_start; i < my_end; i++) {
         Star& s = stars[i];
         s.pos.x += s.vx * DT;
@@ -231,6 +231,9 @@ static void mpi_run_simulation(void) {
         }
     }
 
+    std::vector<StarPos> positions(NUM_STARS);
+    positions.resize(NUM_STARS);
+
     auto run_start = chrono::now();
     for (int i = 0; i < NUM_ITERS; i++) {
         if (pid == 0) {
@@ -239,7 +242,7 @@ static void mpi_run_simulation(void) {
 
         auto start = chrono::now();
 
-        int avg_stars = mpi_iterate_simulation(stars);
+        int avg_stars = mpi_iterate_simulation(stars, positions);
         
         auto end = chrono::now();
         millis frame_time = end - start;
