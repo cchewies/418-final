@@ -12,6 +12,7 @@
 #define MPI_COMM_WORLD 0
 #define MPI_BYTE 0
 #define MPI_C_BOOL 0
+#define MPI_DOUBLE 0
 
 inline void MPI_Init(...) {return;}
 inline void MPI_Finalize(...) {return;}

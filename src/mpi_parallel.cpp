@@ -41,7 +41,9 @@ struct NodeInfo {
  */
 static float mpi_iterate_simulation(std::vector<Star> &stars,
                                     std::vector<StarPos> &positions,
-                                    NodeInfo& node_info) {
+                                    NodeInfo& node_info,
+                                    std::vector<int> &counts,
+                                    std::vector<int> &displs) {
 
     // -- start of spatial partitioning w Morton ordering --
 
@@ -80,128 +82,8 @@ static float mpi_iterate_simulation(std::vector<Star> &stars,
     }
 
     int my_start, my_end;
-
-    // Unbalanced
-    // my_start = NUM_STARS * (pid) / nprocs;
-    // my_end = NUM_STARS * (pid+1) / nprocs;
-
-    // Load balanced
-    if (stars[0].cost == 0) { // first iter
-        // naive allocation
-        my_start = stars.size() * (pid) / nprocs;
-        my_end = stars.size() * (pid+1) / nprocs;
-    } else {
-        // // prefix-sum load balancing
-
-        std::vector<int> prefix(stars.size());
-        prefix[0] = stars[0].cost;
-        for (size_t i = 1; i < stars.size(); i++) {
-            prefix[i] = prefix[i-1] + stars[i].cost;
-        }
-
-        int total = prefix.back();
-
-        // left for testing: pure prefix-sum partitioning
-        // // compute boundaries up front for consistency 
-        // std::vector<int> boundaries(nprocs + 1);
-        // boundaries[0] = 0;
-        // boundaries[nprocs] = stars.size();
-
-        // for (int r = 1; r < nprocs; r++) {
-        //     int target = (int)((float)r / nprocs * total);
-        //     // Find first index where prefix >= target
-        //     boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
-        //                         - prefix.begin());
-        // }
-
-        // my_start = boundaries[pid];
-        // my_end   = boundaries[pid + 1];
-                // prefix-sum load balancing
-
-        if (node_info.prev_times.empty()) { // pure prefix-sum partitioning
-            // compute boundaries up front for consistency 
-            std::vector<int> boundaries(nprocs + 1);
-            boundaries[0] = 0;
-            boundaries[nprocs] = stars.size();
-
-            for (int r = 1; r < nprocs; r++) {
-                int target = (int)((float)r / nprocs * total);
-                // Find first index where prefix >= target
-                boundaries[r] = (int)(std::lower_bound(prefix.begin(), prefix.end(), target) 
-                                    - prefix.begin());
-            }
-
-            my_start = boundaries[pid];
-            my_end   = boundaries[pid + 1];
-        } else { // TODO: change to iter?
-
-            fprintf(stdout, "using previous times\n");
-            // compute boundaries based on previous ratio
-            const std::vector<double>& times = node_info.prev_times;
-
-            // compute performance weights
-            std::vector<double> weights(nprocs);
-            double sum_w = 0.0;
-            for (int i = 0; i < nprocs; i++) {
-                weights[i] = 1.0 / (times[i] + 1e-9);
-                sum_w += weights[i];
-            }
-
-            // normalize relative weights
-            for (int i = 0; i < nprocs; i++) {
-                weights[i] /= sum_w;
-            }
-
-            // prefix sum of weights
-            std::vector<double> wprefix(nprocs + 1, 0.0);
-            for (int i = 0; i < nprocs; i++) {
-                wprefix[i + 1] = wprefix[i] + weights[i];
-            }
-
-            // map to prefix-cost space to get target cumulative costs
-            int target_start = (int)(wprefix[pid] * total);
-            int target_end   = (int)(wprefix[pid + 1] * total);
-
-            // convert to indices
-            my_start = (int)(std::lower_bound(prefix.begin(), prefix.end(), target_start) 
-                                - prefix.begin());
-            my_end   = (int)(std::lower_bound(prefix.begin(), prefix.end(), target_end) 
-                                - prefix.begin());
-
-            fprintf(stdout, "[PID %d] raw times: ", pid);
-            for (int i = 0; i < nprocs; i++) {
-                fprintf(stdout, "%.3f ", times[i]);
-            }
-            fprintf(stdout, "\n");
-
-            fprintf(stdout, "[PID %d] weights (pre-norm): ", pid);
-            for (int i = 0; i < nprocs; i++) {
-                fprintf(stdout, "%.6f ", 1.0 / (times[i] + 1e-9));
-            }
-            fprintf(stdout, "\n");
-            fprintf(stdout, "[PID %d] weights (normalized): ", pid);
-            for (int i = 0; i < nprocs; i++) {
-                fprintf(stdout, "%.4f ", weights[i]);
-            }
-            fprintf(stdout, "\n");
-
-            fprintf(stdout, "[PID %d] weight prefix: ", pid);
-            for (int i = 0; i <= nprocs; i++) {
-                fprintf(stdout, "%.4f ", wprefix[i]);
-            }
-            fprintf(stdout, "\n");
-            fprintf(stdout, "[PID %d] total cost = %d\n", pid, total);
-
-            fprintf(stdout, "[PID %d] sample prefix: ", pid);
-            for (int i = 0; i < std::min(10, (int)prefix.size()); i++) {
-                fprintf(stdout, "%d ", prefix[i]);
-            }
-            fprintf(stdout, "... %d\n", prefix.back());
-    
-             fprintf(stdout, "[PID %d] assigned range [%d, %d) with target cost [%d, %d)\n", 
-                    pid, my_start, my_end, target_start, target_end);
-        }
-    }
+    my_start = displs[pid]/sizeof(StarPos);
+    my_end = (displs[pid] + counts[pid])/sizeof(StarPos);
 
     // -- end of stars assignment --
     auto assign_end = chrono::now();
@@ -240,28 +122,7 @@ static float mpi_iterate_simulation(std::vector<Star> &stars,
 
     // allgatherv support structures
     auto comm_start = chrono::now();
-    std::vector<int> counts(nprocs), displs(nprocs);
-    int my_count = (my_end - my_start) * sizeof(StarPos);
-
-    // Unbalanced
-    // for (int vpid = 0; vpid < nprocs; vpid++) {
-    //     int node_start = NUM_STARS * vpid / nprocs;
-    //     int node_end = NUM_STARS * (vpid + 1) / nprocs;
-    //     counts[vpid] = (node_end - node_start) * sizeof(StarPos);
-    // }
-
-    // Load balanced
-    counts[pid] = my_count;
-    if (use_mmpi) {
-        mmpi_sync(counts.data(), counts.size() * sizeof(int), sizeof(int));
-    } else {
-        MPI_Allgather(&my_count, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-    }
-
-    displs[0] = 0;
-    for (int vpid = 1; vpid < nprocs; vpid++) {
-        displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
-    }
+    int my_count = counts[pid];
 
     // gather updated stars to all ranks
     if (use_mmpi) {
@@ -324,6 +185,19 @@ static void mpi_run_simulation(void) {
     node_info.pid = pid;
     node_info.prev_times.resize(nprocs);
 
+    std::vector<int> counts(nprocs), displs(nprocs);
+
+    // Initial naive allocation
+    for (int vpid = 0; vpid < nprocs; vpid++) {
+        int node_start = NUM_STARS * vpid / nprocs;
+        int node_end = NUM_STARS * (vpid + 1) / nprocs;
+        counts[vpid] = (node_end - node_start) * sizeof(StarPos);
+    }
+    displs[0] = 0;
+    for (int vpid = 1; vpid < nprocs; vpid++) {
+        displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
+    }
+
     auto run_start = chrono::now();
 
     for (int i = 0; i < NUM_ITERS/LOAD_BALANCING_ITERS; i++) {
@@ -337,7 +211,7 @@ static void mpi_run_simulation(void) {
     
             auto start = chrono::now();
     
-            float compute_time = mpi_iterate_simulation(stars, positions, node_info);
+            float compute_time = mpi_iterate_simulation(stars, positions, node_info, counts, displs);
             compute_sum += compute_time;
             
             auto end = chrono::now();
@@ -345,33 +219,43 @@ static void mpi_run_simulation(void) {
     
             fprintf(stdout, "Iteration took %.01fms, with compute taking %.01fms\n", 
                 frame_time.count(), compute_time);
-    
-            bool quit = false;
-            if (pid == 0) {
-                quit = check_quit();
-            }
-            
-            if (use_mmpi) {
-                mmpi_bcast(0, &quit, sizeof(bool)); // TODO: this is probably also adding some latency
-            } else {
-                MPI_Bcast(&quit, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
-            }
-            if (quit) break;
         }
 
         std::vector<double> compute_times(nprocs);
-        compute_times[pid] = compute_sum;
+        compute_times[pid] = compute_sum/LOAD_BALANCING_ITERS;
         if (use_mmpi) {
             mmpi_sync(compute_times.data(), compute_times.size() * sizeof(double), sizeof(double));
         } else {
-            //MPI_Allgather(&compute_sum, 1, MPI_DOUBLE, compute_times.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+            MPI_Allgather(&compute_sum, 1, MPI_DOUBLE, compute_times.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
         }
         node_info.prev_times = compute_times;
         if (pid == 0) {
             fprintf(stdout, "This batch took on average:\n");
-            for (int i = 0; i < nprocs; i++) {
-                printf("  [%d] took %.01fms\n", i, node_info.prev_times[i]/LOAD_BALANCING_ITERS);
+            for (int vpid = 0; vpid < nprocs; vpid++) {
+                printf("  [%d] took %.01fms on %d star bytes\n", vpid, node_info.prev_times[vpid], counts[vpid]);
             }
+        }
+        double sum_compute_speed = 0;
+        for (int vpid = 0; vpid < nprocs; vpid++) {
+            // times 1000 so that the numbers are >1
+            sum_compute_speed += 1/compute_times[vpid] * counts[vpid] / 10;
+        }
+        int work_per_speed = NUM_STARS / sum_compute_speed; // rounded down
+        printf("%f %d\n", sum_compute_speed, work_per_speed);
+
+        int starbytes_counted = 0;
+        for (int vpid = 0; vpid < nprocs; vpid++) {
+            counts[vpid] = (int)(work_per_speed * (1/compute_times[vpid] * counts[vpid] / 10)) * sizeof(StarPos);
+            starbytes_counted += counts[vpid];
+        }
+        printf("star bytes not accounted for: %d\n", NUM_STARS * sizeof(StarPos) - starbytes_counted);
+        counts[0] += NUM_STARS * sizeof(StarPos) - starbytes_counted;
+        displs[0] = 0;
+        for (int vpid = 0; vpid < nprocs; vpid++) {
+            printf("  [%d] new allocation: %d star bytes\n", vpid, counts[vpid]);
+        }
+        for (int vpid = 1; vpid < nprocs; vpid++) {
+            displs[vpid] = displs[vpid - 1] + counts[vpid - 1];
         }
     }
 

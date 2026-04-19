@@ -15,7 +15,7 @@ MPICXX = mpic++
 GXX = g++
 
 # Flags
-COMMON_FLAGS = -Wall -O3 -std=c++2a -m64 -I. -Iinclude -Wno-unknown-pragmas
+COMMON_FLAGS = -Wall -O3 -g -std=c++2a -m64 -I. -Iinclude -Wno-unknown-pragmas
 FULL_LIBS = -lSDL2 -ldl -lpthread
 NO_SDL_LIBS = -ldl -lpthread
 
