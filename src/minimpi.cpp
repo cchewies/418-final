@@ -17,6 +17,7 @@
 #define PORT 5000
 #define MAX_NODES 16
 #define COORDINATOR_HOSTNAME ("ghc82.ghc.andrew.cmu.edu")
+// #define COORDINATOR_HOSTNAME ("linux-29.andrew.cmu.edu")
 
 static char hostname_buf[MAX_NODES][HOST_NAME_MAX];
 static int socks[MAX_NODES] = {-1};

@@ -108,7 +108,7 @@ static float mpi_iterate_simulation(std::vector<Star> &stars,
     millis comm_time = comm_end - comm_start;
 
     if (use_mmpi || pid == 0) {
-        fprintf(stdout, "Qtree took %.01fms, force took %.01fms, comm took %.01fms\n", 
+        fprintf(stdout, "Qtree took %.04fms, force took %.04fms, comm took %.04fms\n", 
                 qtree_time.count(), force_time.count(), comm_time.count());
     }
 
@@ -222,7 +222,7 @@ static void mpi_run_simulation(void) {
             millis frame_time = frame_end - frame_start;
     
             if (use_mmpi || pid == 0) {
-                fprintf(stdout, "Iteration took %.01fms, with compute taking %.01fms\n", 
+                fprintf(stdout, "Iteration took %.02fms, with compute taking %.02fms\n", 
                     frame_time.count(), compute_time);
             }
         }
@@ -242,7 +242,7 @@ static void mpi_run_simulation(void) {
 
         node_info.prev_times = compute_times;
         if (use_mmpi || pid == 0) {
-            fprintf(stdout, "Assign took %.01fms, batch took %.01fms, comms took %.01fms\n", 
+            fprintf(stdout, "Assign took %.02fms, batch took %.02fms, comms took %.02fms\n", 
                     assign_time.count(), batch_time.count(), comms_time.count()); 
 
             fprintf(stdout, "This batch took on average:\n");
@@ -263,7 +263,13 @@ static void mpi_run_simulation(void) {
             starbytes_counted += counts[vpid];
         }
         // printf("star bytes not accounted for: %ld\n", NUM_STARS * sizeof(StarPos) - starbytes_counted);
-        counts[0] += NUM_STARS * sizeof(StarPos) - starbytes_counted;
+        int remaining_elems = (NUM_STARS * sizeof(StarPos) - starbytes_counted) / sizeof(StarPos);
+        int base = remaining_elems / nprocs;
+        int extra = remaining_elems % nprocs;
+        for (int i = 0; i < nprocs; i++) {
+            int elems = base + (i < extra ? 1 : 0);
+            counts[i] += elems * sizeof(StarPos);
+        }
         displs[0] = 0;
         // for (int vpid = 0; vpid < nprocs; vpid++) {
         //     printf("  [%d] new allocation: %d star bytes\n", vpid, counts[vpid]);
@@ -284,7 +290,7 @@ static void mpi_run_simulation(void) {
     }
 
     if (pid == 0) {
-        fprintf(stdout, "%d iterations took %.01fms for %.01fms each\n", 
+        fprintf(stdout, "%d iterations took %.02fms for %.04fms each\n", 
             NUM_ITERS, run_time.count(), run_time.count()/NUM_ITERS);
     }
 }
